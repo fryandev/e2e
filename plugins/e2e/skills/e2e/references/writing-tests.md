@@ -282,7 +282,7 @@ substring; a `RegExp` matches as written.
   `LOCATOR_AMBIGUOUS`; at zero, actions and reads poll until the action
   timeout then `LOCATOR_NOT_FOUND`, assertions until the assertion timeout
   then `ASSERTION_FAILED`. Exceptions:
-  `toHaveCount`, `toBeVisible`, `toBeHidden`, `toBeAttached`, list-form
+  `toHaveCount`, `toBeVisible`, `toBeHidden`, `toBeAttached`, `toBeInViewport`, list-form
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.
 - Narrow with `filter({ hasText })` (a case-insensitive substring, unlike a

@@ -1553,7 +1553,8 @@ function measureViewportIntersection(element: Element): Promise<ViewportIntersec
   return new Promise((resolve) => {
     const observer = new view.IntersectionObserver((entries) => {
       observer.disconnect();
-      const ratio = entries.at(-1)?.intersectionRatio ?? 0;
+      // Clamped: a browser can round a fully visible box a hair past 1.
+      const ratio = Math.min(1, Math.max(0, entries.at(-1)?.intersectionRatio ?? 0));
       resolve({ intersects: ratio > 0, ratio });
     });
     observer.observe(element);
