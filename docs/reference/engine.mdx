@@ -438,11 +438,10 @@ See [Project tools](/tools#read-a-nodes-computed-style) for `ToolContext.read`.
 
 #### Viewport intersection
 
-`viewportIntersection(ref, context)` measures how much of a node `locate`
-returned is inside the viewport, for
-[`toBeInViewport`](/reference/expect#tobeinviewport), without scrolling or
-changing app state. Clip the box by the viewport and by every ancestor that
-clips its content: a scroll container, `overflow: hidden`, a frame.
+`viewportIntersection(ref, context)` measures how much of a located node is
+inside the viewport for [`toBeInViewport`](/reference/expect#tobeinviewport),
+without scrolling or changing app state. Clip the box by the viewport and every
+clipping ancestor, such as a scroll container, `overflow: hidden`, or a frame.
 
 ```ts
 export interface ViewportIntersection {
@@ -453,12 +452,13 @@ export interface ViewportIntersection {
 }
 ```
 
-Leave out `ratio` when the platform reports only the visible part of a box,
-as a device does; `toBeInViewport({ ratio })` then fails with
-`UNSUPPORTED_CAPABILITY` rather than read that part as the whole. Throw
+Omit `ratio` when the platform reports only the visible part of a box, as a
+device does. `toBeInViewport` with `ratio > 0` then fails with
+`UNSUPPORTED_CAPABILITY` instead of reading that part as the whole box. Throw
 retryable `NODE_STALE` if the node no longer binds, and
-`UNSUPPORTED_CAPABILITY` for a node the platform reports no bounds for. The
-harness fails the step with `ENGINE_FAILURE` on an answer outside this shape.
+`UNSUPPORTED_CAPABILITY` if the platform cannot report the node's bounds or
+screen position. The harness fails the step with `ENGINE_FAILURE` on an answer
+outside this shape.
 
 #### Agent verbs
 

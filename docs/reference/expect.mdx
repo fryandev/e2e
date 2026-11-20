@@ -74,7 +74,7 @@ await expect(screen.getByTestId('cart-empty'), 'the cart is empty').toBeVisible(
 | --- | --- |
 | [`toBeVisible`](#tobevisible-and-tobehidden) | Waits for visibility |
 | [`toBeHidden`](#tobevisible-and-tobehidden) | Waits for hidden or absent state |
-| [`toBeInViewport`](#tobeinviewport) | Waits for the match to be inside the viewport |
+| [`toBeInViewport`](#tobeinviewport) | Waits for the match to be in view |
 | [`toBeAttached`](#tobeattached) | Waits for one match to exist |
 | [`toBeEnabled`](#tobeenabled-and-tobedisabled) | Waits for enabled state |
 | [`toBeDisabled`](#tobeenabled-and-tobedisabled) | Waits for disabled state |
@@ -109,9 +109,9 @@ await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as 
 #### `toBeInViewport`
 
 Waits for part of the one match to be inside the viewport. It never scrolls,
-and says nothing about another element covering the match. No match is
-outside the viewport, so `.not` passes once nothing matches. An empty box, or
-none, is outside.
+and it says nothing about another element covering the match. No match counts
+as outside the viewport, so `.not` accepts zero matches. A zero-size box, or a
+web element with no box such as `display: none`, also counts as outside.
 
 ```ts
 await expect(screen.getByRole('toolbar', 'Selection')).toBeInViewport();
@@ -119,18 +119,20 @@ await expect(screen.getByRole('toolbar', 'Selection')).toBeInViewport({ ratio: 0
 await expect(screen.getByRole('alert')).not.toBeInViewport();
 ```
 
-`ratio`, from `0` to `1`, is the share of the box that must be inside; `0`
-means any part, as the default does. What counts as inside depends on the
-engine:
+`ratio` is a number from `0` to `1` setting the share of the box that must be
+inside. `0` means any positive area, the same as omitting `ratio`. Any value
+outside `0` to `1` fails with `INVALID_ARGUMENT`. What counts as inside depends
+on the engine:
 
 | Engine | Measures | `ratio` |
 | --- | --- | --- |
-| `@e2e-dev/web` | The page's `IntersectionObserver`, the check Playwright makes: the viewport, every scrolling or `overflow` ancestor, and frames clip the box. An app that replaces `IntersectionObserver` changes the answer | Supported |
-| `@e2e-dev/mobile` | The bounds the device reports, already clipped to the screen and to scroll containers; a node with nothing on screen leaves the tree | `UNSUPPORTED_CAPABILITY` once the node is on screen, since the device reports only its visible part |
+| `@e2e-dev/web` | Uses the page's `IntersectionObserver`, matching Playwright. The viewport, scrolling or `overflow` ancestors, and frames clip the box. Replacing `IntersectionObserver` changes the result | Supported |
+| `@e2e-dev/mobile` | Checks device-reported bounds against the confirmed screen. Scroll containers clip the bounds, and offscreen nodes leave the tree | `ratio > 0` fails with `UNSUPPORTED_CAPABILITY` once the node is on screen, because the device reports only the visible part |
 
-A node the engine has no bounds for fails at once with
-`UNSUPPORTED_CAPABILITY`, `.not` included, and so does a target whose engine
-does not implement [`viewportIntersection`](/reference/engine#viewport-intersection).
+It fails at once with `UNSUPPORTED_CAPABILITY`, `.not` included, if the target's
+engine does not implement
+[`viewportIntersection`](/reference/engine#viewport-intersection), or if the
+engine cannot report a node's bounds or screen position.
 
 #### `toBeAttached`
 
