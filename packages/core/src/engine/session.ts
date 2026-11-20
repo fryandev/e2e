@@ -341,6 +341,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     actions,
     pointerActions,
     tapModifiers,
+    measuresViewport: engine?.viewportIntersection !== undefined,
     app,
     artifacts,
     appLog: createAppLogRoute(),

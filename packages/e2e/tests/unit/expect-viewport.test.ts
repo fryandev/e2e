@@ -78,11 +78,14 @@ describe('toBeInViewport', () => {
     }).getByTestId('target');
     expect(await failure(expectFixture(unmeasurable).not.toBeInViewport())).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
 
-    const noCapability = createScreenFixture([target]).getByTestId('target');
-    expect(await failure(expectFixture(noCapability).not.toBeInViewport())).toMatchObject({
-      code: 'UNSUPPORTED_CAPABILITY',
-      message: expect.stringContaining('viewport geometry'),
-    });
+    // Refused before the resolve: a missing match must not let `.not` pass on an engine that cannot measure.
+    for (const nodes of [[target], []]) {
+      const noCapability = createScreenFixture(nodes).getByTestId('target');
+      expect(await failure(expectFixture(noCapability).not.toBeInViewport())).toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: expect.stringContaining('does not implement viewportIntersection'),
+      });
+    }
   });
 
   it('samples a node that went stale before it was measured again instead of reading it as gone', async () => {

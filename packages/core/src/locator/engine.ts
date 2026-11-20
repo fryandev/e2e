@@ -454,12 +454,19 @@ if (sampled && reads.cutOff(cause)) throw await notFound(cause);
    * measure of the same ref, all inside `reads`, never a second observation.
    * Zero matches or a missing frame read as no node. A node that went stale
    * before it was measured has a null `intersection`, so the poll samples
-   * again instead of reading the node as gone.
+   * again instead of reading the node as gone. An engine that cannot measure
+   * is refused before the resolve, so a missing match never hides it.
    */
   async readViewport(
     expression: LocatorExpression,
     reads: ReadWindow,
   ): Promise<{ node: SemanticNode | null; count: number; intersection: ViewportIntersection | null }> {
+    if (!this.session.measuresViewport) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        'toBeInViewport is not available on this target: its engine does not implement viewportIntersection',
+      );
+    }
     const { node, count } = await this.readOne(expression, reads, 'empty');
     if (node === null) return { node, count, intersection: null };
     try {
