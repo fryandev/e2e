@@ -125,7 +125,7 @@ engine:
 
 | Engine | Measures | `ratio` |
 | --- | --- | --- |
-| `@e2e-dev/web` | An `IntersectionObserver`, as Playwright does: the viewport, every scrolling or `overflow` ancestor, and frames clip the box | Supported |
+| `@e2e-dev/web` | The page's `IntersectionObserver`, the check Playwright makes: the viewport, every scrolling or `overflow` ancestor, and frames clip the box. An app that replaces `IntersectionObserver` changes the answer | Supported |
 | `@e2e-dev/mobile` | The bounds the device reports, already clipped to the screen and to scroll containers; a node with nothing on screen leaves the tree | `UNSUPPORTED_CAPABILITY` once the node is on screen, since the device reports only its visible part |
 
 A node the engine has no bounds for fails at once with
@@ -889,11 +889,12 @@ has held:
 
 - A positive locator matcher requires exactly one match. The exceptions are
   `toHaveCount` and the list form of `toHaveText` and `toContainText`.
-- Zero matches keep polling until the timeout.
+- Zero matches keep polling until the timeout, except for the matchers below
+  that accept them.
 - Multiple matches fail immediately with `LOCATOR_AMBIGUOUS`.
 - `toBeHidden`, `toBeVisible({ visible: false })`,
-  `toBeAttached({ attached: false })`, negated visibility, and negated
-  `toBeAttached` accept zero matches.
+  `toBeAttached({ attached: false })`, negated visibility, negated
+  `toBeAttached`, and negated `toBeInViewport` accept zero matches.
 - For those, for `toHaveCount` and the list forms, and for
   `waitFor({ state: 'detached' })` and `'hidden'`, a locator under a frame
   that is not in the document is zero matches rather than a wait for the

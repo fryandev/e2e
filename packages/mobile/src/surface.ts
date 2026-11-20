@@ -225,8 +225,6 @@ interface NodeBinding {
   readonly keyboardVisible: boolean;
   /** Whether the capture `node.rect` came from could not place its window on the screen. */
   readonly originUnknown: boolean;
-  /** The screen that capture measured `node.rect` against, when it reported one. */
-  readonly viewport: ViewportSize | undefined;
   /** Whether `fill` and `clear` may type into the node, judged with the children `node` leaves out. */
   readonly takesText: boolean;
 }
@@ -1319,21 +1317,27 @@ export class AgentDeviceSurface {
    * that located it. agent-device clips each rect to the window and to its
    * scrolling ancestors, and leaves out a node with nothing on screen, so a
    * rect is only the visible part of a box: the share of the whole is
-   * unknown, and the answer carries no `ratio`. A rect whose window could not
-   * be placed on the screen is not measured against it.
+   * unknown, and the answer carries no `ratio`. The screen is the one the
+   * session confirmed, not a capture's own size, which an app drawn smaller
+   * than the screen shrinks. A rect whose window could not be placed on the
+   * screen is refused rather than guessed at.
    */
   async viewportIntersection(ref: NodeRef): Promise<ViewportIntersection> {
     const entry = this.resolveRef(ref);
     const rect = entry.node.rect;
-    const screen = entry.viewport ?? this.knownViewport;
-    if (rect === undefined || (screen === undefined && !entry.originUnknown)) {
-      throw new EngineError('UNSUPPORTED_CAPABILITY', `node ${ref.id} has no bounds on the screen, so whether it is in the viewport is unknown`, {
+    const screen = this.knownViewport;
+    if (entry.originUnknown) {
+      throw new EngineError('UNSUPPORTED_CAPABILITY', `whether node ${ref.id} is in the viewport is unknown: the ${ORIGIN_UNKNOWN_BOUNDS}`, {
         retryable: false,
       });
     }
-    const bounds = entry.originUnknown || screen === undefined ? rect : { x: 0, y: 0, ...screen };
-    const width = Math.min(rect.x + rect.width, bounds.x + bounds.width) - Math.max(rect.x, bounds.x);
-    const height = Math.min(rect.y + rect.height, bounds.y + bounds.height) - Math.max(rect.y, bounds.y);
+    if (rect === undefined || screen === undefined) {
+      throw new EngineError('UNSUPPORTED_CAPABILITY', `node ${ref.id} has no bounds on a screen of known size, so whether it is in the viewport is unknown`, {
+        retryable: false,
+      });
+    }
+    const width = Math.min(rect.x + rect.width, screen.width) - Math.max(rect.x, 0);
+    const height = Math.min(rect.y + rect.height, screen.height) - Math.max(rect.y, 0);
     return { intersects: width > 0 && height > 0 };
   }
 
@@ -1385,7 +1389,6 @@ export class AgentDeviceSurface {
       controlRef: control.ref,
       keyboardVisible: snapshot.keyboardVisible,
       originUnknown: snapshot.originUnknown,
-      viewport: snapshot.viewport,
       takesText: mayTakeText(entry.node),
       refsGeneration: snapshot.refsGeneration,
     };

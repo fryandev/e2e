@@ -134,7 +134,7 @@ run only in a browser, so a test that uses it declares
 
 | Playwright | e2e |
 | --- | --- |
-| `toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()`, `toBeAttached()`, `toBeInViewport()`, `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()`, `toHaveRole()`, `toBeEditable()` | the same, with `{ visible }`, `{ enabled }`, `{ editable }`, `{ checked }`, `{ attached }`, `{ ratio }`, and `{ ignoreCase }`; `toBeInViewport` [differs on a device](/reference/expect#tobeinviewport) |
+| `toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeChecked()`, `toBeFocused()`, `toBeAttached()`, `toBeInViewport()`, `toHaveText()`, `toContainText()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()`, `toHaveRole()`, `toBeEditable()` | the same, with `{ visible }`, `{ enabled }`, `{ editable }`, `{ checked }`, `{ attached }`, `{ ratio }`, and `{ ignoreCase }`; `toBeInViewport` reads a zero-size element as outside and [differs on a device](/reference/expect#tobeinviewport) |
 | `toHaveId(id)`, `toContainClass(name)` | `toHaveAttribute('id', id)`, `toHaveAttribute('class', RegExp)` |
 | `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(browser).toHaveURL()`, `toHaveTitle()` |
 | `expect(page).toHaveScreenshot()`, `expect(locator).toHaveScreenshot()` | `expect(screen).toHaveScreenshot()` and the locator form, see [Visual comparison](/visual-testing) |

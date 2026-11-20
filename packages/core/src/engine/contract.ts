@@ -259,9 +259,9 @@ export interface ViewportIntersection {
   /** Whether a positive area of the box is inside; false for a node with no box or an empty one. */
   readonly intersects: boolean;
   /**
-   * The inside area's share of the whole box, from 0 to 1, as an
-   * `IntersectionObserver` reports it. Absent where the platform reports
-   * only the visible part of a box, so the whole is unknown.
+   * The inside area over the whole box's area, from 0 to 1. Absent where
+   * the platform reports only the visible part of a box, so the whole is
+   * unknown.
    */
   readonly ratio?: number;
 }

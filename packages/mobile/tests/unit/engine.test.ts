@@ -1790,6 +1790,17 @@ describe('location', () => {
     await expect(measure('Unplaced')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
   });
 
+  it('refuses to say whether a node is in the viewport when its window has no known place on the screen', async () => {
+    const h = harness();
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, warnings: [ORIGIN_WARNING] }));
+    await openAttempt(h);
+    const [hidden] = await h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Hidden', exact: true } } }, operation());
+    await expect(h.engine.viewportIntersection!(hidden!.ref, operation())).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message: expect.stringContaining(ORIGIN_UNKNOWN_BOUNDS),
+    });
+  });
+
   it('finds an Android view by its id without its package', async () => {
     const h = harness({ platform: 'android' });
     await openAttempt(h);

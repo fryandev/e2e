@@ -609,6 +609,10 @@ describe('engine protocol', () => {
     expect(() => connectEngine({ manifest: { name: 'x', version: '1', spiVersion: 1, methods: ['engine/perform'] }, transport })).toThrow(/perform without observe/);
     expect(() => connectEngine({ manifest: { name: 'x', version: '1', spiVersion: 1, methods: ['engine/observe', 'engine/perform'] }, transport })).toThrow(/perform without actions/);
     expect(() => connectEngine({ manifest: { name: 'x', version: '1', spiVersion: 1, methods: ['engine/observe', 'engine/observe'] }, transport })).toThrow(/twice/);
+    // The schema cannot require engine/locate beside it: resolveLocators builds locate on the client.
+    const measuring = { name: 'x', version: '1', spiVersion: 1 as const, methods: ['engine/observe', 'engine/viewportIntersection'] as const };
+    expect(() => connectEngine({ manifest: measuring, transport })).toThrow(/viewportIntersection without locate/);
+    expect(connectEngine({ manifest: measuring, transport, resolveLocators: true }).capabilities.has('viewport-intersection')).toBe(true);
   });
 });
 
