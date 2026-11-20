@@ -434,7 +434,10 @@ in order; `toContainText(['Alpha', 'Beta'])` needs each entry in a distinct
 match, in order, extra matches allowed. `toHaveAttribute(name)` checks
 presence, `toHaveAttribute(name, value)` the value; `toBeAttached` waits for
 a match, hidden or not; `toHaveClass` compares the whole normalized class
-list or tests a RegExp. A failed matcher is `ASSERTION_FAILED`, exit code 1.
+list or tests a RegExp; `toBeInViewport({ ratio })` waits for part of a match
+(or that share of its box) inside the viewport without scrolling, reads no
+match as outside, and on a device takes no `ratio`
+(`UNSUPPORTED_CAPABILITY`). A failed matcher is `ASSERTION_FAILED`, exit code 1.
 
 Playwright's `{ checked: false }`, `{ enabled: false }`, `{ editable: false }`,
 `{ visible: false }`, and `{ attached: false }` flip their matchers, and `{ ignoreCase: true }`

@@ -38,6 +38,7 @@ import {
   type SessionApp,
   type SessionArtifacts,
   type TargetSession,
+  type ViewportIntersection,
 } from './surface.ts';
 
 export interface EngineSessionOptions {
@@ -293,6 +294,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const locateRaw = guard('locators (screen)', engine?.locate);
   const observeRaw = guard('observation', engine?.observe);
   const readStyleRaw = guard('computed styles', engine?.readStyle);
+  const viewportIntersectionRaw = guard('viewport geometry (toBeInViewport)', engine?.viewportIntersection);
   const performRaw = guard('actions', engine?.perform);
   const actions: ReadonlySet<LocatorActionKind> = new Set(engine?.actions ?? []);
   const performAtRaw = guard('point actions', engine?.performAt);
@@ -459,6 +461,10 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
       return node;
     },
     readStyle: readStyleRaw,
+    async viewportIntersection(ref, operation) {
+      rejectSupersededLocate(ref);
+      return checkIntersection(await viewportIntersectionRaw(ref, operation), engine?.name ?? targetName);
+    },
     async perform(ref, action, operation) {
       if (!actions.has(action.kind)) unsupported(`the "${action.kind}" action`);
       if ('modifiers' in action && action.modifiers !== undefined && !tapModifiers) {
@@ -498,4 +504,21 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
     }),
   };
   return session;
+}
+
+/**
+ * An engine's `viewportIntersection` answer, held to the contract: a matcher
+ * must never pass on a ratio outside 0 to 1 or a missing verdict.
+ */
+function checkIntersection(value: ViewportIntersection, engineName: string): ViewportIntersection {
+  const { intersects, ratio } = (value ?? {}) as Partial<Record<keyof ViewportIntersection, unknown>>;
+  const validRatio = ratio === undefined || (typeof ratio === 'number' && ratio >= 0 && ratio <= 1);
+  if (typeof intersects !== 'boolean' || !validRatio) {
+    throw new EngineError(
+      'ENGINE_FAILURE',
+      `engine ${engineName} returned an invalid viewport intersection: intersects must be a boolean and ratio a number from 0 to 1`,
+      { retryable: false },
+    );
+  }
+  return ratio === undefined ? { intersects } : { intersects, ratio };
 }

@@ -1,7 +1,7 @@
 /** Runner-owned polling locator assertions. */
 
-import type { SemanticNode } from '@e2e-dev/core/lib/engine/surface';
-import { TestError } from '@e2e-dev/core/lib/internal/errors';
+import type { SemanticNode, ViewportIntersection } from '@e2e-dev/core/lib/engine/surface';
+import { ConfigurationError, TestError } from '@e2e-dev/core/lib/internal/errors';
 import { rejectUnknownOptions } from '@e2e-dev/core/lib/internal/options';
 import {
   isTextMatch,
@@ -30,18 +30,25 @@ import type {
 import { labelAmbiguous, withMessage } from './heading.ts';
 import { expectScreenshot } from './screenshot.ts';
 
+/** Slack on a measured share, so `ratio: 0.5` passes on a box measured at 0.4999999999. */
+const RATIO_TOLERANCE = 1e-9;
+
 interface Sample {
   readonly count: number;
   readonly node: SemanticNode | null;
   /** Every current match, read; only a `wholeSet: 'read'` matcher asks for them. */
   readonly nodes: readonly SemanticNode[];
-  readonly viewport?: { width: number; height: number };
+  /**
+   * How much of `node` is inside the viewport, for a `measuresViewport`
+   * matcher; null when the node went stale before it was measured.
+   */
+  readonly intersection?: ViewportIntersection | null;
 }
 
 interface MatcherSpec {
   readonly name: string;
-  /** Reads the matched node box and the current viewport for a geometry check. */
-  readonly needsViewport?: boolean;
+  /** Also measures how much of the one match is inside the viewport (`Sample.intersection`). */
+  readonly measuresViewport?: boolean;
   /**
    * Evaluates the whole sample instead of requiring one node: `true` counts
    * the matches, `'read'` also reads each of them.
@@ -58,7 +65,7 @@ interface MatcherSpec {
    * rejects keeps the poll waiting, negated or not: `not.toHaveValue` on a
    * heading is not a pass.
    */
-  readonly evaluableNode?: (node: SemanticNode) => boolean;
+  readonly evaluableNode?: (node: SemanticNode, sample: Sample) => boolean;
   /**
    * The matcher reads what an engine withholds on a secure field, its value,
    * text, or attributes; a name is never withheld. A secure node in the sample
@@ -234,16 +241,14 @@ class AsyncExpectationImpl implements AsyncExpectation {
   private conditionEvaluable(spec: MatcherSpec, sample: Sample): boolean {
     if (spec.wholeSet !== undefined) return true;
     if (sample.node === null) return spec.evaluableWithoutNode === true;
-    return spec.evaluableNode?.(sample.node) ?? true;
+    return spec.evaluableNode?.(sample.node, sample) ?? true;
   }
 
   private async sample(spec: MatcherSpec, reads: ReadWindow): Promise<Sample> {
     const { engine } = this.internals.context;
-    if (spec.needsViewport === true) {
-      return {
-        ...(await engine.readWithViewport(this.internals.expression, deadline)),
-        nodes: [],
-      };
+    if (spec.measuresViewport === true) {
+      const { node, count, intersection } = await engine.readViewport(this.internals.expression, reads);
+      return { count, node, nodes: [], intersection };
     }
     if (spec.wholeSet === 'read') {
       const nodes = await engine.readAllNow(this.internals.expression, reads);
@@ -377,34 +382,38 @@ class AsyncExpectationImpl implements AsyncExpectation {
     const api = this.api('toBeInViewport');
     rejectUnknownOptions(api, options, ['ratio', 'timeout']);
     const ratio: unknown = options?.ratio;
-    if (ratio !== undefined && (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0 || ratio > 1)) {
-      throw new TestError('INVALID_ARGUMENT', `${api} option ratio must be between 0 and 1`);
+    if (ratio !== undefined && !(typeof ratio === 'number' && ratio >= 0 && ratio <= 1)) {
+      throw new TestError('INVALID_ARGUMENT', `${api} option ratio must be a number from 0 to 1`);
     }
-
-    const expectedRatio = ratio as number | undefined;
+    // 0 asks for any area inside, as the default does.
+    const minimum = ratio === 0 ? undefined : ratio;
     return this.poll(
       {
         name: 'toBeInViewport',
-        needsViewport: true,
-        evaluableNode: (node) => node.rect !== undefined,
-        predicate: (sample) => {
-          const rect = sample.node?.rect;
-          if (rect === undefined || sample.viewport === undefined) return false;
-
-          const intersectionRatio = viewportIntersectionRatio(rect, sample.viewport);
-          return expectedRatio === undefined || expectedRatio === 0
-            ? intersectionRatio > 0
-            : intersectionRatio >= expectedRatio;
+        measuresViewport: true,
+        // No match is outside the viewport: a device leaves offscreen nodes out of its tree.
+        evaluableWithoutNode: true,
+        evaluableNode: (_node, sample) => sample.intersection != null,
+        predicate: ({ node, intersection }) => {
+          if (node === null || intersection == null || !intersection.intersects) return false;
+          if (minimum === undefined) return true;
+          if (intersection.ratio === undefined) {
+            throw new ConfigurationError(
+              'UNSUPPORTED_CAPABILITY',
+              `${api} option ratio needs the share of the box inside the viewport, and this target's engine reports only the part of a box that is visible; drop ratio to check that any of it is`,
+            );
+          }
+          return intersection.ratio > minimum - RATIO_TOLERANCE;
         },
         describeExpected:
-          expectedRatio === undefined
-            ? 'a positive area inside the viewport'
-            : `at least ${expectedRatio} of its area inside the viewport`,
-        observed: (sample) => {
-          if (sample.node === null) return 'no node';
-          if (sample.node.rect === undefined) return 'no bounding box';
-          if (sample.viewport === undefined) return 'no viewport geometry';
-          return `bounding box intersection ratio ${viewportIntersectionRatio(sample.node.rect, sample.viewport)}`;
+          minimum === undefined ? 'inside the viewport' : `at least ${minimum} of its box inside the viewport`,
+        observed: ({ node, intersection }) => {
+          if (node === null) return 'no node';
+          if (intersection == null) return 'a node that went stale before it was measured';
+          if (!intersection.intersects) return 'outside the viewport';
+          return intersection.ratio === undefined
+            ? 'inside the viewport'
+            : `${Number(intersection.ratio.toFixed(3))} of its box inside the viewport`;
         },
       },
       options?.timeout,
@@ -599,23 +608,6 @@ function matchesSubsequence(
     if (satisfies(node, patterns[next]!)) next += 1;
   }
   return next === patterns.length;
-}
-
-/** The share of a node's box that intersects the viewport. */
-function viewportIntersectionRatio(
-  rect: { x: number; y: number; width: number; height: number },
-  viewport: { width: number; height: number },
-): number {
-  const area = rect.width * rect.height;
-  if (area <= 0) return 0;
-
-  const left = Math.max(0, rect.x);
-  const top = Math.max(0, rect.y);
-  const right = Math.min(viewport.width, rect.x + rect.width);
-  const bottom = Math.min(viewport.height, rect.y + rect.height);
-  const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
-
-  return intersection / area;
 }
 
 /**

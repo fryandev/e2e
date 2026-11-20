@@ -8,6 +8,7 @@ import {
   type OperationContext,
   type PointerAction,
   type SemanticNode,
+  type ViewportIntersection,
   type ViewportPoint,
   type ViewportSize,
 } from '../engine/surface.ts';
@@ -447,23 +448,27 @@ if (sampled && reads.cutOff(cause)) throw await notFound(cause);
     return this.readOne(expression, reads, missingFrame);
   }
 
-  /** Reads a matched node's box and the current viewport for geometry assertions. */
-  async readWithViewport(
+  /**
+   * Reads the one current match and measures how much of it is inside the
+   * viewport, for `toBeInViewport`: one resolve, one read from it, and one
+   * measure of the same ref, all inside `reads`, never a second observation.
+   * Zero matches or a missing frame read as no node. A node that went stale
+   * before it was measured has a null `intersection`, so the poll samples
+   * again instead of reading the node as gone.
+   */
+  async readViewport(
     expression: LocatorExpression,
-    deadline: Deadline,
-  ): Promise<{
-    node: SemanticNode | null;
-    count: number;
-    viewport?: { width: number; height: number };
-  }> {
-    const { node, count } = await this.tryRead(expression, deadline);
-    if (node === null) return { node, count };
-
+    reads: ReadWindow,
+  ): Promise<{ node: SemanticNode | null; count: number; intersection: ViewportIntersection | null }> {
+    const { node, count } = await this.readOne(expression, reads, 'empty');
+    if (node === null) return { node, count, intersection: null };
     try {
-      const observation = await this.session.observe(this.operationWithin(deadline));
-      return { node, count, viewport: observation.viewport };
+      const intersection = await reads.read((timeoutMs) =>
+        this.session.viewportIntersection(node.ref, this.readOperation(timeoutMs)),
+      );
+      return { node, count, intersection };
     } catch (cause) {
-      if (asEngineError(cause)?.code === 'NODE_STALE') return { node: null, count: 0 };
+      if (asEngineError(cause)?.code === 'NODE_STALE') return { node, count, intersection: null };
       throw translateLocatorError(cause, expression);
     }
   }

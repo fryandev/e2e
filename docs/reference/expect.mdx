@@ -74,7 +74,7 @@ await expect(screen.getByTestId('cart-empty'), 'the cart is empty').toBeVisible(
 | --- | --- |
 | [`toBeVisible`](#tobevisible-and-tobehidden) | Waits for visibility |
 | [`toBeHidden`](#tobevisible-and-tobehidden) | Waits for hidden or absent state |
-| [`toBeInViewport`](#tobeinviewport) | Waits for viewport intersection |
+| [`toBeInViewport`](#tobeinviewport) | Waits for the match to be inside the viewport |
 | [`toBeAttached`](#tobeattached) | Waits for one match to exist |
 | [`toBeEnabled`](#tobeenabled-and-tobedisabled) | Waits for enabled state |
 | [`toBeDisabled`](#tobeenabled-and-tobedisabled) | Waits for disabled state |
@@ -108,21 +108,29 @@ await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as 
 
 #### `toBeInViewport`
 
-Waits until the match's box intersects the viewport. The default passes when
-any positive area is inside. Set `ratio` from `0` to `1` to require that share
-of the box; `0` also means any positive area. The calculation uses the
-reported box and viewport rectangle, ignores clipping by overflow ancestors,
-and does not check whether another element covers the match. It never scrolls.
-If the engine never reports a box before the assertion timeout, the assertion
-fails with `ASSERTION_FAILED` and `observed: no bounding box`, including under
-`.not`. It trusts the engine's coordinates, so the result depends on the
-engine reporting scroll-aware boxes.
+Waits for part of the one match to be inside the viewport. It never scrolls,
+and says nothing about another element covering the match. No match is
+outside the viewport, so `.not` passes once nothing matches. An empty box, or
+none, is outside.
 
 ```ts
 await expect(screen.getByRole('toolbar', 'Selection')).toBeInViewport();
 await expect(screen.getByRole('toolbar', 'Selection')).toBeInViewport({ ratio: 0.5 });
 await expect(screen.getByRole('alert')).not.toBeInViewport();
 ```
+
+`ratio`, from `0` to `1`, is the share of the box that must be inside; `0`
+means any part, as the default does. What counts as inside depends on the
+engine:
+
+| Engine | Measures | `ratio` |
+| --- | --- | --- |
+| `@e2e-dev/web` | An `IntersectionObserver`, as Playwright does: the viewport, every scrolling or `overflow` ancestor, and frames clip the box | Supported |
+| `@e2e-dev/mobile` | The bounds the device reports, already clipped to the screen and to scroll containers; a node with nothing on screen leaves the tree | `UNSUPPORTED_CAPABILITY` once the node is on screen, since the device reports only its visible part |
+
+A node the engine has no bounds for fails at once with
+`UNSUPPORTED_CAPABILITY`, `.not` included, and so does a target whose engine
+does not implement [`viewportIntersection`](/reference/engine#viewport-intersection).
 
 #### `toBeAttached`
 
@@ -990,7 +998,11 @@ export interface AsyncExpectation {
   toBeVisible(options?: { visible?: boolean; timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
-  /** Waits until a share of the match's box intersects the viewport. */
+  /**
+   * Waits for part of the match to be inside the viewport, after clipping by
+   * scrolling and overflow ancestors; `ratio` (0 to 1) sets the share of its
+   * box that must be. No match is outside the viewport. It never scrolls.
+   */
   toBeInViewport(options?: { ratio?: number; timeout?: number }): Promise<void>;
   /** Waits for one match to exist, visible or not; `attached: false` waits for none. */
   toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void>;

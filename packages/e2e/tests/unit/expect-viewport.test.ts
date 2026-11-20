@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EngineError, resolveExpression, type SemanticNode } from '../../src/engine/index.ts';
+import { EngineError, resolveExpression, type SemanticNode, type ViewportIntersection } from '@e2e-dev/core/lib/engine/index';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { createScreenFixture } from '../helpers/screen-fixture.ts';
 import { screenOver } from '../helpers/screen-over.ts';
@@ -8,102 +8,123 @@ import { useFakeTime } from '../helpers/fake-time.ts';
 
 useFakeTime();
 
-const viewport = { width: 1280, height: 720 };
+const target: SemanticNode = { ref: { id: 'target', revision: '' }, role: 'generic', testId: 'target' };
 
-function target(rect?: { x: number; y: number; width: number; height: number }): SemanticNode {
-  return {
-    ref: { id: 'target', revision: '' },
-    role: 'generic',
-    testId: 'target',
-    ...(rect === undefined ? {} : { rect }),
-  };
+/** A screen whose `target` node is present while `present()` says so, measured by `measure`. */
+function screenMeasuring(
+  measure: () => ViewportIntersection | Promise<ViewportIntersection>,
+  present: () => boolean = () => true,
+  node: SemanticNode = target,
+) {
+  return screenOver({
+    locate: (expression) => resolveExpression(expression, present() ? [node] : []),
+    observe: () => snapshot([node]),
+    viewportIntersection: measure,
+    timeoutMs: 300,
+  }).screen;
 }
 
-function screenWith(rect?: { x: number; y: number; width: number; height: number }) {
-  return createScreenFixture([target(rect)]);
-}
+const failure = (promise: Promise<void>) => promise.then(() => expect.unreachable('expected a failure'), (error: unknown) => error);
 
 describe('toBeInViewport', () => {
-  it('uses any positive intersection by default and a ratio when supplied', async () => {
-    const screen = screenWith({ x: -90, y: 10, width: 100, height: 50 });
-    const locator = screen.getByTestId('target');
+  it('passes on any area inside by default and compares the share with ratio', async () => {
+    const locator = screenMeasuring(() => ({ intersects: true, ratio: 0.1 })).getByTestId('target');
 
     await expectFixture(locator).toBeInViewport();
     await expectFixture(locator).toBeInViewport({ ratio: 0 });
     await expectFixture(locator).toBeInViewport({ ratio: 0.1 });
-    await expect(expectFixture(locator).toBeInViewport({ ratio: 0.11, timeout: 50 })).rejects.toMatchObject({
+    expect(await failure(expectFixture(locator).toBeInViewport({ ratio: 0.11, timeout: 50 }))).toMatchObject({
       code: 'ASSERTION_FAILED',
+      message: expect.stringMatching(/expected: at least 0\.11 of its box inside the viewport\nobserved: 0\.1 of its box/),
     });
   });
 
-  it('treats offscreen and zero-size boxes as out of the viewport', async () => {
-    await expectFixture(screenWith({ x: 1300, y: 10, width: 20, height: 20 }).getByTestId('target')).not.toBeInViewport({
-      ratio: 0,
-      timeout: 30,
+  it('reads no match and a box outside as outside the viewport', async () => {
+    const absent = screenMeasuring(() => ({ intersects: true, ratio: 1 }), () => false).getByTestId('target');
+    await expectFixture(absent).not.toBeInViewport({ timeout: 50 });
+    expect(await failure(expectFixture(absent).toBeInViewport({ timeout: 50 }))).toMatchObject({
+      message: expect.stringContaining('observed: no node'),
     });
-    await expectFixture(screenWith({ x: 20, y: 20, width: 0, height: 20 }).getByTestId('target')).not.toBeInViewport({
-      timeout: 30,
+
+    const outside = screenMeasuring(() => ({ intersects: false, ratio: 0 })).getByTestId('target');
+    await expectFixture(outside).not.toBeInViewport({ timeout: 50 });
+  });
+
+  it('polls until the node enters the viewport', async () => {
+    let inside = false;
+    setTimeout(() => (inside = true), 25);
+    const locator = screenMeasuring(() => (inside ? { intersects: true, ratio: 1 } : { intersects: false, ratio: 0 }));
+
+    await expectFixture(locator.getByTestId('target')).toBeInViewport({ timeout: 200 });
+  });
+
+  it('refuses ratio on an engine that measures only the visible part of a box, even under .not', async () => {
+    const visiblePart = screenMeasuring(() => ({ intersects: true })).getByTestId('target');
+    await expectFixture(visiblePart).toBeInViewport();
+    for (const negated of [false, true]) {
+      const expectation = negated ? expectFixture(visiblePart).not : expectFixture(visiblePart);
+      expect(await failure(expectation.toBeInViewport({ ratio: 0.5 }))).toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: expect.stringContaining('drop ratio'),
+      });
+    }
+    // Nothing of the node is on screen, so no share is needed to answer.
+    await expectFixture(screenMeasuring(() => ({ intersects: false })).getByTestId('target')).not.toBeInViewport({ ratio: 0.5 });
+  });
+
+  it('fails at once when the engine cannot measure the node, even under .not', async () => {
+    const unmeasurable = screenMeasuring(() => {
+      throw new EngineError('UNSUPPORTED_CAPABILITY', 'node target has no bounds on the screen', { retryable: false });
+    }).getByTestId('target');
+    expect(await failure(expectFixture(unmeasurable).not.toBeInViewport())).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+
+    const noCapability = createScreenFixture([target]).getByTestId('target');
+    expect(await failure(expectFixture(noCapability).not.toBeInViewport())).toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message: expect.stringContaining('viewport geometry'),
     });
   });
 
-  it('fails clearly when the box is missing, including under .not', async () => {
-    const locator = screenWith().getByTestId('target');
+  it('samples a node that went stale before it was measured again instead of reading it as gone', async () => {
+    let measures = 0;
+    const flaky = screenMeasuring(() => {
+      measures += 1;
+      if (measures === 1) throw new EngineError('NODE_STALE', 'navigation changed', { retryable: true });
+      return { intersects: true, ratio: 1 };
+    }).getByTestId('target');
+    await expectFixture(flaky).toBeInViewport({ timeout: 200 });
+    expect(measures).toBe(2);
 
-    await expect(expectFixture(locator).toBeInViewport({ timeout: 30 })).rejects.toMatchObject({
+    const stale = screenMeasuring(() => {
+      throw new EngineError('NODE_STALE', 'navigation changed', { retryable: true });
+    }).getByTestId('target');
+    expect(await failure(expectFixture(stale).not.toBeInViewport({ timeout: 50 }))).toMatchObject({
       code: 'ASSERTION_FAILED',
-      message: expect.stringContaining('observed: no bounding box'),
-    });
-    await expect(expectFixture(locator).not.toBeInViewport({ timeout: 30 })).rejects.toMatchObject({
-      code: 'ASSERTION_FAILED',
-      message: expect.stringContaining('observed: no bounding box'),
+      message: expect.stringContaining('observed: a node that went stale before it was measured'),
     });
   });
 
-  it('rejects invalid ratios and unknown options before reading', () => {
-    const locator = expectFixture(screenWith({ x: 0, y: 0, width: 10, height: 10 }).getByTestId('target'));
+  it('measures a secure field without reading or printing its value', async () => {
+    const secure: SemanticNode = { ...target, role: 'textbox', value: 'hunter2', states: { secure: true } };
+    const locator = screenMeasuring(() => ({ intersects: false, ratio: 0 }), () => true, secure).getByTestId('target');
 
-    expect(() => locator.toBeInViewport({ ratio: -0.1 })).toThrow(
-      expect.objectContaining({ code: 'INVALID_ARGUMENT' }),
-    );
-    expect(() => locator.toBeInViewport({ ratio: 1.1 })).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
-    expect(() => locator.toBeInViewport({ ratio: Number.NaN })).toThrow(
-      expect.objectContaining({ code: 'INVALID_ARGUMENT' }),
-    );
-    expect(() => locator.toBeInViewport({ ratio: 0.5, threshold: 0.5 } as never)).toThrow(
-      expect.objectContaining({ code: 'INVALID_ARGUMENT' }),
-    );
+    await expectFixture(locator).not.toBeInViewport();
+    const error = await failure(expectFixture(locator).toBeInViewport({ timeout: 50 }));
+    expect(error).toMatchObject({ code: 'ASSERTION_FAILED' });
+    expect(String((error as Error).message)).not.toContain('hunter2');
   });
 
-  it('polls until the box enters the viewport', async () => {
-    const state = { rect: { x: 1300, y: 10, width: 20, height: 20 } };
-    const currentTarget = (): SemanticNode => target(state.rect);
-    const screen = screenOver({
-      locate: (expression) => resolveExpression(expression, [currentTarget()]),
-      observe: () => ({ ...snapshot([currentTarget()]), viewport }),
-      timeoutMs: 300,
-    }).screen;
-
-    setTimeout(() => {
-      state.rect = { x: 20, y: 20, width: 20, height: 20 };
-    }, 25);
-
-    await expectFixture(screen.getByTestId('target')).toBeInViewport({ timeout: 200 });
+  it('fails on an engine answer outside the contract', async () => {
+    const locator = screenMeasuring(() => ({ intersects: true, ratio: 2 })).getByTestId('target');
+    expect(await failure(expectFixture(locator).toBeInViewport())).toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
-  it('retries when navigation makes the viewport observation stale', async () => {
-    let observations = 0;
-    const node = target({ x: 20, y: 20, width: 20, height: 20 });
-    const screen = screenOver({
-      locate: (expression) => resolveExpression(expression, [node]),
-      observe: () => {
-        observations += 1;
-        if (observations === 1) throw new EngineError('NODE_STALE', 'navigation changed', { retryable: true });
-        return { ...snapshot([node]), viewport };
-      },
-      timeoutMs: 300,
-    }).screen;
+  it('rejects an invalid ratio and unknown options before reading', () => {
+    const locator = expectFixture(createScreenFixture([target]).getByTestId('target'));
 
-    await expectFixture(screen.getByTestId('target')).toBeInViewport({ timeout: 200 });
-    expect(observations).toBeGreaterThan(1);
+    for (const ratio of [-0.1, 1.1, Number.NaN, '0.5']) {
+      expect(() => locator.toBeInViewport({ ratio: ratio as number })).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+    }
+    expect(() => locator.toBeInViewport({ threshold: 0.5 } as never)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
   });
 });
