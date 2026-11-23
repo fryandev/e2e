@@ -58,6 +58,7 @@ import {
   ROOT_ID,
   screenRoot,
   screenTitle,
+  viewportOf,
   type ProjectedNode,
   type ProjectedSnapshot,
 } from './nodes.ts';
@@ -557,11 +558,11 @@ export class AgentDeviceSurface {
    */
   private knownViewport: ViewportSize | undefined;
   /**
-   * Physical pixels per density-independent pixel, as the latest capture
-   * reported it: Android's display density, else 1. Undefined before the
-   * session's first capture.
+   * Device pixels per viewport unit on each axis, from the latest capture
+   * (see `inDp`): 1 on iOS, about the display density on Android. Undefined
+   * before the session's first capture.
    */
-  private pixelDensity: number | undefined;
+  private pixelScale: Point | undefined;
 
   constructor(
     readonly options: MobileOptions,
@@ -870,7 +871,7 @@ export class AgentDeviceSurface {
     this.appIdentity = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
-    this.pixelDensity = undefined;
+    this.pixelScale = undefined;
     let closing: Promise<void> | undefined;
     const close = (): void => {
       if (client === undefined) return;
@@ -1154,31 +1155,42 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * A capture in density-independent pixels, the unit of iOS points and of
-   * every rect and point the harness reads: agent-device reports Android
-   * geometry in physical pixels with the display density beside it, so the
-   * node rects, the viewport, and the keyboard frame are divided by it. A
-   * capture without a density (iOS, or an older Android helper) stays as
-   * reported.
+   * A capture in density-independent pixels (dp), the unit of iOS points and
+   * of every rect and point the harness reads. agent-device reports Android
+   * geometry in physical pixels with the display density beside it. The
+   * viewport has to be whole units (the report and the replay cache store it
+   * so), so the screen is the nearest whole number of dp, and each axis is
+   * divided by its own share: 1080 pixels at density 2.625 read as 411 dp of
+   * 2.6277 pixels each. Rects, points, and screenshot masks then convert
+   * both ways with no rounding gap. A capture without a density (iOS, or an
+   * older Android helper) stays as reported. A new scale drops the learned
+   * viewport, which is in the old one.
    */
   private inDp(raw: RawSnapshot): RawSnapshot {
-    const density = raw.androidSnapshot?.pixelDensity ?? 1;
-    this.pixelDensity = density;
-    if (density === 1) return raw;
-    const scale = (rect: Rect): Rect => ({ x: rect.x / density, y: rect.y / density, width: rect.width / density, height: rect.height / density });
-    const { nodes, viewport, keyboard } = raw;
+    const density = raw.androidSnapshot?.pixelDensity;
+    const screen = raw.viewport ?? viewportOf(raw.nodes ?? []);
+    if (density === undefined || screen === undefined) {
+      this.pixelScale = density === undefined ? { x: 1, y: 1 } : (this.pixelScale ?? { x: density, y: density });
+      return raw;
+    }
+    const viewport = { width: Math.round(screen.width / density), height: Math.round(screen.height / density) };
+    const scale = { x: screen.width / viewport.width, y: screen.height / viewport.height };
+    if (this.pixelScale !== undefined && (this.pixelScale.x !== scale.x || this.pixelScale.y !== scale.y)) this.knownViewport = undefined;
+    this.pixelScale = scale;
+    const toDp = (rect: Rect): Rect => ({ x: rect.x / scale.x, y: rect.y / scale.y, width: rect.width / scale.x, height: rect.height / scale.y });
+    const { nodes, keyboard } = raw;
     return {
       ...raw,
-      ...(nodes === undefined ? {} : { nodes: nodes.map((node) => (node.rect === undefined ? node : { ...node, rect: scale(node.rect) })) }),
-      ...(viewport === undefined ? {} : { viewport: { width: viewport.width / density, height: viewport.height / density } }),
-      ...(keyboard?.kind === 'visible' || keyboard?.kind === 'derived' ? { keyboard: { ...keyboard, frame: scale(keyboard.frame) } } : {}),
+      viewport,
+      ...(nodes === undefined ? {} : { nodes: nodes.map((node) => (node.rect === undefined ? node : { ...node, rect: toDp(node.rect) })) }),
+      ...(keyboard?.kind === 'visible' || keyboard?.kind === 'derived' ? { keyboard: { ...keyboard, frame: toDp(keyboard.frame) } } : {}),
     };
   }
 
-  /** A point in density-independent pixels, in the physical pixels the device takes on Android. */
+  /** A point in viewport units, in the device's pixels (see `inDp`). */
   toDevicePoint(point: Point): Point {
-    const density = this.pixelDensity ?? 1;
-    return { x: point.x * density, y: point.y * density };
+    const scale = this.pixelScale ?? { x: 1, y: 1 };
+    return { x: point.x * scale.x, y: point.y * scale.y };
   }
 
   /**
@@ -1725,7 +1737,7 @@ export class AgentDeviceSurface {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     // A point a test names needs no capture, but the device takes it in
     // physical pixels, so an Android session reads its density first.
-    if (this.pixelDensity === undefined && this.options.platform === 'android') await this.capture(operation.signal, true, input);
+    if (this.pixelScale === undefined && this.options.platform === 'android') await this.capture(operation.signal, true, input);
     const at = this.toDevicePoint(point);
     const sent = action.kind === 'swipeTo' ? { ...action, target: this.toDevicePoint(action.target) } : action;
     const before = this.latestScreen;

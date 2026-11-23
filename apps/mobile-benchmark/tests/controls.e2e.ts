@@ -333,17 +333,15 @@ test.describe('control inventory', () => {
     await expect(screen.getByTestId('gesture-status')).toHaveText('gesture: double tap');
   });
 
-  // Android bounds and points are the screen's physical pixels: agent-device
-  // 0.21.15 reports the emulator's display density in its snapshot metadata,
-  // but rects and points stay physical pixels and the engine does not scale
-  // them yet, so the pad's 240 by 100 reads as 630 by 263 on a 2.625x emulator.
-  test('pointer verbs land at the point asked for', { platforms: ['ios'] }, async ({ screen }) => {
+  test('pointer verbs land at the point asked for', async ({ screen }) => {
     await showSection(screen, 'Gestures');
     const pad = screen.getByLabel('Tap pad');
     const box = await pad.boundingBox();
     if (box === null) throw new Error('pad has no box');
-    expect(box.width).toBe(240);
-    expect(box.height).toBe(100);
+    // Android lays the pad out in whole physical pixels (630 by 263 at
+    // density 2.625), so its dp size is within half a dp of 240 by 100.
+    expect(box.width).toBeCloseTo(240, 0);
+    expect(box.height).toBeCloseTo(100, 0);
 
     await screen.tapAt({ x: box.x + 40, y: box.y + 30 });
     await expect(screen.getByTestId('pad-status')).toHaveText('pad: 40,30');

@@ -1405,9 +1405,40 @@ describe('Android density', () => {
     expect(h.fake.lastArgs('interactions.swipe')).toMatchObject(swipeWithin({ x: 0, y: 180, width: 390, height: 44 }, 'left', undefined));
   });
 
+  it('converts the viewport, the keyboard frame, and secure-field masks to dp', async () => {
+    const h = harness({ platform: 'android' });
+    // Half the 400x800 dp screen: the Password field (dp y=100, 44 tall) masks image rows 50 to 72.
+    const image = { width: 200, height: 400, channels: 4 as const, pixels: new Uint8Array(200 * 400 * 4).fill(255) };
+    h.fake.respond('capture.screenshot', (args) => {
+      writeFileSync((args as { path: string }).path, encodePng(image));
+      return { path: (args as { path: string }).path };
+    });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({
+      nodes: [
+        { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', rect: { x: 0, y: 0, width: 800, height: 1500 } },
+        { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.widget.EditText', label: 'Password', password: true, rect: { x: 0, y: 200, width: 800, height: 88 } },
+        { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'android.widget.Button', label: 'Behind', rect: { x: 0, y: 1100, width: 800, height: 88 } },
+      ],
+      viewport: { width: 800, height: 1600 },
+      keyboard: { kind: 'visible', frame: { x: 0, y: 1000, width: 800, height: 600 } },
+      androidSnapshot: { backend: 'android-helper', pixelDensity: 2 },
+    }));
+
+    const snapshot = await h.engine.observe!(operation(), { pixels: true });
+
+    expect(snapshot.viewport).toEqual({ width: 400, height: 800 });
+    expect(named(snapshot.root, 'Behind').states?.hidden).toBe(true);
+    expect(snapshot.maskedRegionCount).toBe(1);
+    const decoded = decodePng(snapshot.pixels!.data);
+    const at = (x: number, y: number) => [...decoded.pixels.subarray((y * 200 + x) * 4, (y * 200 + x) * 4 + 3)];
+    expect(at(100, 60)).toEqual([0, 0, 0]);
+    expect(at(100, 40)).toEqual([255, 255, 255]);
+  });
+
   it('reads the density before a point tap that follows no capture', async () => {
     const h = harness({ platform: 'android' }, false);
-    h.fake.respond('capture.snapshot', () => withDensity(2.625));
+    h.fake.respond('capture.snapshot', () => withDensity(2));
     await openAttempt(h);
     const before = h.fake.calls.length;
     const test = { ...operation(), origin: 'test' as const };
@@ -1416,7 +1447,7 @@ describe('Android density', () => {
     await h.engine.performAt!({ x: 100, y: 200 }, { kind: 'tap' }, test);
 
     expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'interactions.press', 'interactions.press']);
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 262.5, y: 525 });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 200, y: 400 });
   });
 
   it('keeps physical pixels when Android reports no density', async () => {

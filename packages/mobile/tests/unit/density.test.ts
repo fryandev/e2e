@@ -49,9 +49,9 @@ it.each([1, 2.625, 3.5])('lands a swipe built from boundingBox() and percentages
   const boxFile = path.join(project, 'box.json');
   writeFileSync(path.join(project, 'test.e2e.ts'), `import { writeFileSync } from 'node:fs';
     import { test } from 'e2e';
-    test('swipe from the box', async ({ screen }) => {
+    test('swipe from the box', async ({ screen, device }) => {
       const box = await screen.getByTestId('long-press-target').boundingBox();
-      writeFileSync(${JSON.stringify(boxFile)}, JSON.stringify(box));
+      writeFileSync(${JSON.stringify(boxFile)}, JSON.stringify({ box, viewport: await device.viewport() }));
       await screen.swipe({ from: { x: box.x + box.width / 2, y: box.y + box.height / 2 }, to: { x: '50%', y: '10%' } });
     });`);
   const device = atDensity(density);
@@ -68,7 +68,8 @@ it.each([1, 2.625, 3.5])('lands a swipe built from boundingBox() and percentages
     const target = device.nodes.find((node) => node.identifier === 'long-press-target')?.rect;
     const capturedTarget = captured.nodes.find((node) => node.identifier === 'long-press-target')?.rect;
     if (target === undefined || capturedTarget === undefined) throw new Error('the capture has no long-press-target bounds');
-    const box: Rect = JSON.parse(readFileSync(boxFile, 'utf8'));
+    const { box, viewport }: { box: Rect; viewport: { width: number; height: number } } = JSON.parse(readFileSync(boxFile, 'utf8'));
+    expect(viewport).toEqual({ width: 411, height: 914 });
     for (const side of ['x', 'y', 'width', 'height'] as const) {
       expect(Math.abs(box[side] - capturedTarget[side] / CAPTURED_DENSITY)).toBeLessThan(1);
     }
