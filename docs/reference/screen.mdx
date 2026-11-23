@@ -1164,9 +1164,9 @@ const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 ```
 
 The box is in CSS pixels, and on a device in points (density-independent
-pixels on Android, or physical pixels when the device reports no density).
-It is `null` for a node that lays out no box (`display: none` on it or an
-ancestor). A `visibility: hidden` node keeps its box.
+pixels on Android). It is `null` for a node that lays out no box
+(`display: none` on it or an ancestor). A `visibility: hidden` node keeps
+its box.
 
 #### `count`
 

@@ -1407,7 +1407,7 @@ describe('Android density', () => {
 
   it('converts the viewport, the keyboard frame, and secure-field masks to dp', async () => {
     const h = harness({ platform: 'android' });
-    // Half the 400x800 dp screen: the Password field (dp y=100, 44 tall) masks image rows 50 to 72.
+    // The image is half the 400x800 dp screen, so the Password field (dp y=100, 44 tall) is masked on image rows 50 to 72.
     const image = { width: 200, height: 400, channels: 4 as const, pixels: new Uint8Array(200 * 400 * 4).fill(255) };
     h.fake.respond('capture.screenshot', (args) => {
       writeFileSync((args as { path: string }).path, encodePng(image));

@@ -1,4 +1,4 @@
-/** The real runner over a captured Android screen at several display densities: a test reads and names points in dp, the device gets physical pixels. */
+/** Runs the real runner over a captured Android screen at several display densities. A test reads and names points in dp, and the device gets physical pixels. */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -22,12 +22,12 @@ const CAPTURED_DENSITY = 2.625;
 
 const captured: Pick<CaptureSnapshotResult, 'nodes'> = JSON.parse(readFileSync(CAPTURE, 'utf8'));
 
-/** A length of the captured screen in the physical pixels of `density`. */
+/** Converts a length of the captured screen to the physical pixels of `density`. */
 function px(value: number, density: number): number {
   return Math.round((value / CAPTURED_DENSITY) * density);
 }
 
-/** The captured screen as a device of `density` reports it: the same dp layout, in whole physical pixels. */
+/** Returns the captured screen as a device of `density` reports it: the same dp layout, in whole physical pixels. */
 function atDensity(density: number): Pick<CaptureSnapshotResult, 'nodes'> {
   return {
     nodes: captured.nodes.map((node) => {

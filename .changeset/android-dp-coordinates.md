@@ -2,4 +2,8 @@
 '@e2e-dev/mobile': minor
 ---
 
-**Breaking:** On Android, `boundingBox()`, the viewport, `tapAt`, `screen.swipe`, and the agent's `swipe` tool now use density-independent pixels (dp), the same unit as iOS points. Before, they used the screen's physical pixels, so a fixed point landed in a different place on screens of different density. The engine divides the bounds agent-device reports by the display density it reports, and multiplies each point by it before sending it. A tap at a point before anything has read the screen first reads it once to learn the density. When agent-device reports no density (an older Android helper), coordinates stay in physical pixels as before. Points written for physical pixels on Android need dividing by the device's density, or use percentages. Agent steps recorded on Android with a bare point tap were recorded at the physical-pixel viewport, so they no longer replay and run the model again (`REPLAY_STALE` with `--strict-cache`) until they are recorded again. `device.unstable_raw` still takes physical pixels.
+**Breaking:** on Android, `boundingBox()`, `device.viewport()`, `screen.tapAt()`, `screen.swipe()`, and the agent's `swipe` tool use density-independent pixels (dp), like iOS points. They used the screen's physical pixels before, so a fixed point landed in a different place on screens of different density. Divide a hard-coded Android point by the device's density, or use a percentage.
+
+Android agent steps recorded with a bare point tap don't replay anymore (`REPLAY_STALE` with `--strict-cache`). Record them again with a `read-write` run.
+
+When the screen hasn't been captured yet, a capture is taken before a point action to read the density. Coordinates stay in physical pixels when agent-device doesn't report a density (an older Android helper). `device.unstable_raw` always uses physical pixels.

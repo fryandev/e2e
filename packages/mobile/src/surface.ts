@@ -1155,16 +1155,20 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * A capture in density-independent pixels (dp), the unit of iOS points and
-   * of every rect and point the harness reads. agent-device reports Android
-   * geometry in physical pixels with the display density beside it. The
-   * viewport has to be whole units (the report and the replay cache store it
-   * so), so the screen is the nearest whole number of dp, and each axis is
-   * divided by its own share: 1080 pixels at density 2.625 read as 411 dp of
-   * 2.6277 pixels each. Rects, points, and screenshot masks then convert
-   * both ways with no rounding gap. A capture without a density (iOS, or an
-   * older Android helper) stays as reported. A new scale drops the learned
-   * viewport, which is in the old one.
+   * Converts a capture to density-independent pixels (dp), the unit of iOS
+   * points and of every rect and point the harness reads. agent-device
+   * reports Android geometry in physical pixels, with the display density
+   * beside it.
+   *
+   * The report and the replay cache store the viewport in whole units, so
+   * the screen is rounded to whole dp and each axis gets its own factor
+   * (1080 pixels at density 2.625 are 411 dp of 2.6277 pixels). Rects,
+   * points, and screenshot masks then convert both ways without a rounding
+   * gap.
+   *
+   * A capture without a density (iOS, or an older Android helper) is
+   * returned as it is. When the scale changes, the learned viewport is
+   * dropped, since it's in the old scale.
    */
   private inDp(raw: RawSnapshot): RawSnapshot {
     const density = raw.androidSnapshot?.pixelDensity;
@@ -1187,7 +1191,7 @@ export class AgentDeviceSurface {
     };
   }
 
-  /** A point in viewport units, in the device's pixels (see `inDp`). */
+  /** Converts a point in viewport units to the device's pixels (see `inDp`). */
   toDevicePoint(point: Point): Point {
     const scale = this.pixelScale ?? { x: 1, y: 1 };
     return { x: point.x * scale.x, y: point.y * scale.y };
@@ -1735,8 +1739,8 @@ export class AgentDeviceSurface {
    */
   async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
-    // A point a test names needs no capture, but the device takes it in
-    // physical pixels, so an Android session reads its density first.
+    // A test can name a point before anything captured the screen. On
+    // Android the density comes from a capture, so one is taken first.
     if (this.pixelScale === undefined && this.options.platform === 'android') await this.capture(operation.signal, true, input);
     const at = this.toDevicePoint(point);
     const sent = action.kind === 'swipeTo' ? { ...action, target: this.toDevicePoint(action.target) } : action;
