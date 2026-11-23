@@ -357,8 +357,10 @@ test.describe('control inventory', () => {
     if (swipeBox === null) throw new Error('swipe pad has no box');
     // A left-to-right fling anywhere on the screen pops it (the stack's back
     // gesture, wherever it starts), so the path runs right to left. The
-    // finger goes down exactly at `from`; agent-device swipes as a fling that
-    // lifts about 10 pt short of `to` (111 for 100 here), hence the tolerance.
+    // finger goes down exactly at `from`. agent-device swipes as a fling, so
+    // the finger lifts near `to` instead of on it, hence the tolerance:
+    // - On iOS, it lifts about 10 pt short (111 for 100 here).
+    // - On Android, it lifts about 16 dp past it (84), at every density.
     await screen.swipe({
       from: { x: swipeBox.x + 300, y: swipeBox.y + 40 },
       to: { x: swipeBox.x + 100, y: swipeBox.y + 40 },
@@ -367,7 +369,7 @@ test.describe('control inventory', () => {
     await expect(swipeStatus).toContainText('swipe: 300,40 to ');
     const path = /^swipe: 300,40 to (\d+),40$/.exec((await swipeStatus.textContent()) ?? '');
     if (path === null) throw new Error('swipe status has no path');
-    expect(Math.abs(Number(path[1]) - 100)).toBeLessThanOrEqual(15);
+    expect(Math.abs(Number(path[1]) - 100)).toBeLessThanOrEqual(20);
 
     // `direction` is the scroll direction: content to the right comes into
     // view when the finger moves left, so the end lands left of the start.
