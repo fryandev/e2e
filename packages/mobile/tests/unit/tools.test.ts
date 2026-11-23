@@ -4,7 +4,7 @@ import { defineEngine } from '@e2e-dev/core/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { unstable_deviceSession, mobileTools } from '../../src/tools.ts';
-import { createFakeClient, type FakeClient } from '../helpers/fake-client.ts';
+import { ANDROID_ID_SNAPSHOT, createFakeClient, type FakeClient } from '../helpers/fake-client.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('agent tool pack', () => {
@@ -71,6 +71,29 @@ describe('agent tool pack', () => {
     await ios.startAttempt!(attempt('a2'));
     expect(await run('open_app', { app: 'Reminders' })).toBe('Opened Reminders.');
     expect(iosFake.lastArgs('apps.open')).toEqual({ app: 'Reminders', platform: 'ios' });
+  });
+
+  it('swipes in the physical pixels of the density the latest Android capture reported', async () => {
+    const fake = createFakeClient({ 'capture.snapshot': () => ({ ...ANDROID_ID_SNAPSHOT, androidSnapshot: { backend: 'android-helper', pixelDensity: 2 } }) });
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => fake.client));
+    await android.init!({
+      runId: 'r',
+      targetName: 'android',
+      projectRoot: '/project',
+      app: {},
+      headed: false,
+      workerSlot: 0,
+      log: () => undefined,
+      env: {},
+      signal: new AbortController().signal,
+    });
+    await android.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    await android.observe!({ signal: new AbortController().signal, timeoutMs: 1000, runId: 'r', attemptId: 'a1', origin: 'agent' });
+    const swipe = mobileTools(android)['swipe']!.tool.execute as (input: unknown, options: object) => Promise<unknown>;
+
+    await swipe({ from: { x: 150, y: 100 }, to: { x: 10, y: 100 } }, { toolCallId: 'c1', messages: [] });
+
+    expect(fake.lastArgs('interactions.swipe')).toEqual({ from: { x: 300, y: 200 }, to: { x: 20, y: 200 } });
   });
 
   it('hands a custom tool the running attempt\'s session and client', async () => {

@@ -1385,6 +1385,51 @@ describe('location', () => {
   });
 });
 
+describe('Android density', () => {
+  const withDensity = (pixelDensity: number) => ({ ...ANDROID_ID_SNAPSHOT, androidSnapshot: { backend: 'android-helper' as const, pixelDensity } });
+
+  it('reads bounds and the viewport in dp and sends every point back in physical pixels', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => withDensity(2));
+    const snapshot = await h.engine.observe!(operation());
+    const greet = named(snapshot.root, 'Greet');
+
+    expect(snapshot.viewport).toEqual({ width: 195, height: 422 });
+    expect(greet.rect).toEqual({ x: 0, y: 90, width: 195, height: 22 });
+
+    await h.engine.performAt!({ x: 50, y: 100 }, { kind: 'swipeTo', target: { x: 150, y: 100 } }, operation());
+    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 100, y: 200 }, to: { x: 300, y: 200 } });
+
+    await h.engine.perform!(greet.ref, { kind: 'swipe', direction: 'left' }, operation());
+    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject(swipeWithin({ x: 0, y: 180, width: 390, height: 44 }, 'left', undefined));
+  });
+
+  it('reads the density before a point tap that follows no capture', async () => {
+    const h = harness({ platform: 'android' }, false);
+    h.fake.respond('capture.snapshot', () => withDensity(2.625));
+    await openAttempt(h);
+    const before = h.fake.calls.length;
+    const test = { ...operation(), origin: 'test' as const };
+
+    await h.engine.performAt!({ x: 100, y: 200 }, { kind: 'tap' }, test);
+    await h.engine.performAt!({ x: 100, y: 200 }, { kind: 'tap' }, test);
+
+    expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'interactions.press', 'interactions.press']);
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 262.5, y: 525 });
+  });
+
+  it('keeps physical pixels when Android reports no density', async () => {
+    const h = harness({ platform: 'android' });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ANDROID_ID_SNAPSHOT);
+
+    expect((await observed(h, 'Greet')).rect).toEqual({ x: 0, y: 180, width: 390, height: 44 });
+    await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'tap' }, operation());
+    expect(h.fake.lastArgs('interactions.press')).toMatchObject({ x: 10, y: 20 });
+  });
+});
+
 describe('a screen agent-device cannot read yet', () => {
   const ABOUT = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } } as const;
   const insufficientContent = () =>

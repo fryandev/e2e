@@ -136,7 +136,8 @@ export function mobileTools(
           to: z.object({ x: z.number(), y: z.number() }),
         }),
         execute: async ({ from, to }, options) => {
-          await active().command('swipe', (client) => client.interactions.swipe({ from, to }), abort(options));
+          const surface = active();
+          await surface.command('swipe', (client) => client.interactions.swipe({ from: surface.toDevicePoint(from), to: surface.toDevicePoint(to) }), abort(options));
           return `Swiped from (${from.x}, ${from.y}) to (${to.x}, ${to.y}).`;
         },
       }),

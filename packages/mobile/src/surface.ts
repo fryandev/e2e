@@ -79,6 +79,7 @@ import {
   type RawScreenshotResult,
   swipeWithin,
   unsupported,
+  type Point,
   type Rect,
   InputBudget,
 } from './support.ts';
@@ -138,7 +139,9 @@ export interface OpenAppOptions {
  * `absent`, or that it could not look. `refsGeneration` is the capture its
  * refs were issued from. `warnings` is read for `ORIGIN_WARNING` only.
  */
-type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'viewport' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard' | 'refsGeneration' | 'warnings'>>;
+type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard' | 'refsGeneration' | 'warnings' | 'androidSnapshot'>> & {
+  readonly viewport?: ViewportSize;
+};
 
 /**
  * How far the dismissing drag travels, as a share of the viewport: short
@@ -553,6 +556,12 @@ export class AgentDeviceSurface {
    * screen to agree, see `viewportFor`.
    */
   private knownViewport: ViewportSize | undefined;
+  /**
+   * Physical pixels per density-independent pixel, as the latest capture
+   * reported it: Android's display density, else 1. Undefined before the
+   * session's first capture.
+   */
+  private pixelDensity: number | undefined;
 
   constructor(
     readonly options: MobileOptions,
@@ -861,6 +870,7 @@ export class AgentDeviceSurface {
     this.appIdentity = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
+    this.pixelDensity = undefined;
     let closing: Promise<void> | undefined;
     const close = (): void => {
       if (client === undefined) return;
@@ -1133,14 +1143,42 @@ export class AgentDeviceSurface {
    * capture runs under `budget`, so one the budget abandoned is not retried.
    */
   private async capture(signal: AbortSignal, interactiveOnly: boolean, budget: InputBudget): Promise<RawSnapshot> {
-    const take = (): Promise<RawSnapshot> =>
-      budget.read(() => this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal));
+    const take = async (): Promise<RawSnapshot> =>
+      this.inDp(await budget.read(() => this.command('snapshot', (client) => client.capture.snapshot({ interactiveOnly }), signal)));
     try {
       return await take();
     } catch (cause) {
       if (signal.aborted || !isSnapshotPresentationFailure(cause)) throw cause;
       return take();
     }
+  }
+
+  /**
+   * A capture in density-independent pixels, the unit of iOS points and of
+   * every rect and point the harness reads: agent-device reports Android
+   * geometry in physical pixels with the display density beside it, so the
+   * node rects, the viewport, and the keyboard frame are divided by it. A
+   * capture without a density (iOS, or an older Android helper) stays as
+   * reported.
+   */
+  private inDp(raw: RawSnapshot): RawSnapshot {
+    const density = raw.androidSnapshot?.pixelDensity ?? 1;
+    this.pixelDensity = density;
+    if (density === 1) return raw;
+    const scale = (rect: Rect): Rect => ({ x: rect.x / density, y: rect.y / density, width: rect.width / density, height: rect.height / density });
+    const { nodes, viewport, keyboard } = raw;
+    return {
+      ...raw,
+      ...(nodes === undefined ? {} : { nodes: nodes.map((node) => (node.rect === undefined ? node : { ...node, rect: scale(node.rect) })) }),
+      ...(viewport === undefined ? {} : { viewport: { width: viewport.width / density, height: viewport.height / density } }),
+      ...(keyboard?.kind === 'visible' || keyboard?.kind === 'derived' ? { keyboard: { ...keyboard, frame: scale(keyboard.frame) } } : {}),
+    };
+  }
+
+  /** A point in density-independent pixels, in the physical pixels the device takes on Android. */
+  toDevicePoint(point: Point): Point {
+    const density = this.pixelDensity ?? 1;
+    return { x: point.x * density, y: point.y * density };
   }
 
   /**
@@ -1614,7 +1652,8 @@ export class AgentDeviceSurface {
             );
           }
           const stabilization = gestureStabilization(operation);
-          const sent = await input.send(() => client.interactions.swipe({ ...swipeWithin(rect, action.direction, action.momentum), ...stabilization }));
+          const { from, to } = swipeWithin(rect, action.direction, action.momentum);
+          const sent = await input.send(() => client.interactions.swipe({ from: this.toDevicePoint(from), to: this.toDevicePoint(to), ...stabilization }));
           this.noteGesture(operation);
           return sent;
         }
@@ -1684,8 +1723,13 @@ export class AgentDeviceSurface {
    */
   async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
+    // A point a test names needs no capture, but the device takes it in
+    // physical pixels, so an Android session reads its density first.
+    if (this.pixelDensity === undefined && this.options.platform === 'android') await this.capture(operation.signal, true, input);
+    const at = this.toDevicePoint(point);
+    const sent = action.kind === 'swipeTo' ? { ...action, target: this.toDevicePoint(action.target) } : action;
     const before = this.latestScreen;
-    await this.command(`${action.kind} at point`, (client) => pointerInteraction(client, point, action, settle, gestureStabilization(operation), input), operation.signal);
+    await this.command(`${action.kind} at point`, (client) => pointerInteraction(client, at, sent, settle, gestureStabilization(operation), input), operation.signal);
     if (action.kind === 'swipeTo') this.noteGesture(operation);
     this.markAction(before);
   }
@@ -1836,7 +1880,7 @@ export class AgentDeviceSurface {
       const to = axis === 'horizontal'
         ? { x: from.x - viewport.width * KEYBOARD_DRAG_RATIO, y: from.y }
         : { x: from.x, y: from.y - viewport.height * KEYBOARD_DRAG_RATIO };
-      await this.command('keyboard.dismiss', (client) => input.send(() => client.interactions.swipe({ from, to })), signal);
+      await this.command('keyboard.dismiss', (client) => input.send(() => client.interactions.swipe({ from: this.toDevicePoint(from), to: this.toDevicePoint(to) })), signal);
       reading = await this.keyboardReading(signal, input);
       if (reading.shown !== true) return;
     }
@@ -1859,7 +1903,7 @@ export class AgentDeviceSurface {
     const tipTop = tip.rect.y;
     const button = nodes.find((node) => node.label === 'Continue' && node.rect !== undefined && node.rect.y > tipTop);
     if (button?.rect === undefined) return false;
-    await this.command('keyboard.dismiss', (client) => input.press(client, centreOf(button.rect!)), signal);
+    await this.command('keyboard.dismiss', (client) => input.press(client, this.toDevicePoint(centreOf(button.rect!))), signal);
     return true;
   }
 
