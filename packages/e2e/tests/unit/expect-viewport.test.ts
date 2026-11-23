@@ -61,6 +61,8 @@ describe('toBeInViewport', () => {
   it('refuses ratio on an engine that measures only the visible part of a box, even under .not', async () => {
     const visiblePart = screenMeasuring(() => ({ intersects: true })).getByTestId('target');
     await expectFixture(visiblePart).toBeInViewport();
+    // 0 asks for any part, which needs no share.
+    await expectFixture(visiblePart).toBeInViewport({ ratio: 0 });
     for (const negated of [false, true]) {
       const expectation = negated ? expectFixture(visiblePart).not : expectFixture(visiblePart);
       expect(await failure(expectation.toBeInViewport({ ratio: 0.5 }))).toMatchObject({
@@ -118,7 +120,13 @@ describe('toBeInViewport', () => {
   });
 
   it('fails on an engine answer outside the contract or one that contradicts itself', async () => {
-    for (const answer of [{ intersects: true, ratio: 2 }, { intersects: false, ratio: 1 }, { intersects: true, ratio: 0 }]) {
+    for (const answer of [
+      { intersects: true, ratio: 2 },
+      { intersects: false, ratio: -0.1 },
+      { intersects: 'yes' } as unknown as ViewportIntersection,
+      { intersects: false, ratio: 1 },
+      { intersects: true, ratio: 0 },
+    ]) {
       const locator = screenMeasuring(() => answer).getByTestId('target');
       expect(await failure(expectFixture(locator).not.toBeInViewport({ ratio: 1 }))).toMatchObject({ code: 'ENGINE_FAILURE' });
     }

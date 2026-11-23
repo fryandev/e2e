@@ -29,6 +29,7 @@ const DOCUMENT = `
     <div id="scrolled-away" style="height: 50px"></div>
   </div>
   <div id="empty" style="position: absolute; left: 10px; top: 400px; width: 0; height: 10px"></div>
+  <div id="flat" style="position: absolute; left: 10px; top: 420px; width: 10px; height: 0"></div>
   <div id="no-box" style="display: none"></div>
   <input id="secret" type="password" value="hunter2" style="position: absolute; left: 10px; top: 500px">
   <iframe id="frame" style="${BOX}; left: 700px; top: 10px; border: 0"
@@ -81,6 +82,7 @@ describe('viewport intersection on the web engine', () => {
 
   it('reads an element with no box or an empty one as outside', async () => {
     expect(await measure('#empty')).toEqual({ intersects: false, ratio: 0 });
+    expect(await measure('#flat')).toEqual({ intersects: false, ratio: 0 });
     expect(await measure('#no-box')).toEqual({ intersects: false, ratio: 0 });
   });
 

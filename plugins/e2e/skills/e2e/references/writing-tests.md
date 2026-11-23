@@ -437,7 +437,8 @@ a match, hidden or not; `toHaveClass` compares the whole normalized class
 list or tests a RegExp; `toBeInViewport({ ratio })` waits for part of a match
 (or that share of its box) inside the viewport without scrolling, reads no
 match as outside, and on a device fails with `UNSUPPORTED_CAPABILITY` for
-`ratio > 0`. A failed matcher is `ASSERTION_FAILED`, exit code 1.
+`ratio > 0` once the node is on screen. A failed matcher is `ASSERTION_FAILED`,
+exit code 1.
 
 Playwright's `{ checked: false }`, `{ enabled: false }`, `{ editable: false }`,
 `{ visible: false }`, and `{ attached: false }` flip their matchers, and `{ ignoreCase: true }`

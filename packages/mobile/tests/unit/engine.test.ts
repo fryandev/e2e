@@ -1774,7 +1774,11 @@ describe('location', () => {
     const h = harness();
     h.fake.respond('capture.snapshot', () => ({
       ...SETTINGS_SNAPSHOT,
-      nodes: [...SETTINGS_NODES, { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Unplaced' }],
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Unplaced' },
+        { ref: '@e12', index: 12, parentIndex: 0, depth: 1, type: 'button', label: 'Lower', rect: { x: 10, y: 600, width: 100, height: 40 } },
+      ],
     }));
     await openAttempt(h);
     const measure = async (label: string) => {
@@ -1784,6 +1788,8 @@ describe('location', () => {
       return h.engine.viewportIntersection!(node!.ref, operation()).finally(() => expect(h.fake.calls).toHaveLength(issued));
     };
     expect(await measure('About')).toEqual({ intersects: true });
+    // Below y 390 on the 390x844 screen: the height is measured against the height, not the width.
+    expect(await measure('Lower')).toEqual({ intersects: true });
     expect(await measure('Password')).toEqual({ intersects: true });
     // Below the 844-point screen.
     expect(await measure('Hidden')).toEqual({ intersects: false });
@@ -3604,6 +3610,20 @@ describe('device fixture', () => {
       code: 'UNSUPPORTED_CAPABILITY',
       message: expect.stringContaining(hint),
     });
+  });
+
+  it('measures toBeInViewport against the unfolded screen after fold', async () => {
+    const h = harness({ platform: 'android', bundleId: 'com.example.app' });
+    // A real device's screenshot reports no logical size, so the tree's size stands once it changes.
+    h.fake.respond('capture.screenshot', () => ({ width: 1236, height: 2745 }));
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 412, height: 915 } }));
+    await openAttempt(h);
+    await h.engine.observe!(operation());
+    await fixture(h).fold('open');
+    const inner = { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Inner pane', rect: { x: 600, y: 100, width: 120, height: 40 } };
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, inner], viewport: { width: 841, height: 701 } }));
+    const [node] = await h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Inner pane', exact: true } } }, operation());
+    expect(await h.engine.viewportIntersection!(node!.ref, operation())).toEqual({ intersects: true });
   });
 
   it('folds an iOS simulator or an Android emulator through the one device command, and maps a hingeless device to UNSUPPORTED_CAPABILITY', async () => {
