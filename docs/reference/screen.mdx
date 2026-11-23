@@ -1163,8 +1163,8 @@ boundingBox(): Promise<{ x: number; y: number; width: number; height: number } |
 const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 ```
 
-The box is in CSS pixels, and on a device in points (density-independent
-pixels on Android). It is `null` for a node that lays out no box
+The box is in CSS pixels. On a device, it's in points (density-independent
+pixels on Android). It's `null` when the node isn't laid out
 (`display: none` on it or an ancestor). A `visibility: hidden` node keeps
 its box.
 

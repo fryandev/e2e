@@ -1436,7 +1436,7 @@ describe('Android density', () => {
     expect(at(100, 40)).toEqual([255, 255, 255]);
   });
 
-  it('reads the density before a point tap that follows no capture', async () => {
+  it('reads the density before a point tap when the screen hasn\'t been captured yet', async () => {
     const h = harness({ platform: 'android' }, false);
     h.fake.respond('capture.snapshot', () => withDensity(2));
     await openAttempt(h);
@@ -1450,7 +1450,7 @@ describe('Android density', () => {
     expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 200, y: 400 });
   });
 
-  it('keeps physical pixels when Android reports no density', async () => {
+  it('keeps physical pixels when Android doesn\'t report a density', async () => {
     const h = harness({ platform: 'android' });
     await openAttempt(h);
     h.fake.respond('capture.snapshot', () => ANDROID_ID_SNAPSHOT);

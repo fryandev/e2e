@@ -139,6 +139,7 @@ export interface OpenAppOptions {
  * is the band the capture's producer measured: `visible` with its frame,
  * `absent`, or that it could not look. `refsGeneration` is the capture its
  * refs were issued from. `warnings` is read for `ORIGIN_WARNING` only.
+ * `androidSnapshot` holds the Android display density (see `inDp`).
  */
 type RawSnapshot = Partial<Pick<CaptureSnapshotResult, 'nodes' | 'truncated' | 'appName' | 'appBundleId' | 'snapshotQuality' | 'keyboard' | 'refsGeneration' | 'warnings' | 'androidSnapshot'>> & {
   readonly viewport?: ViewportSize;
@@ -559,8 +560,8 @@ export class AgentDeviceSurface {
   private knownViewport: ViewportSize | undefined;
   /**
    * Device pixels per viewport unit on each axis, from the latest capture
-   * (see `inDp`): 1 on iOS, about the display density on Android. Undefined
-   * before the session's first capture.
+   * (see `inDp`). It's 1 on iOS and close to the display density on Android.
+   * It's undefined before the session's first capture.
    */
   private pixelScale: Point | undefined;
 
@@ -1155,19 +1156,19 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Converts a capture to density-independent pixels (dp), the unit of iOS
-   * points and of every rect and point the harness reads. agent-device
-   * reports Android geometry in physical pixels, with the display density
+   * Converts a capture to density-independent pixels (dp). Every rect and
+   * point the harness reads is in dp, like iOS points. On Android, geometry
+   * from agent-device is in physical pixels, with the display density
    * beside it.
    *
-   * The report and the replay cache store the viewport in whole units, so
-   * the screen is rounded to whole dp and each axis gets its own factor
-   * (1080 pixels at density 2.625 are 411 dp of 2.6277 pixels). Rects,
-   * points, and screenshot masks then convert both ways without a rounding
-   * gap.
+   * The viewport is stored in whole units in the report and the replay
+   * cache. So the screen is rounded to whole dp, and each axis gets a
+   * separate factor (1080 pixels at density 2.625 are 411 dp of 2.6277
+   * pixels). That way, rects, points, and screenshot masks are converted
+   * both ways without a rounding gap.
    *
    * A capture without a density (iOS, or an older Android helper) is
-   * returned as it is. When the scale changes, the learned viewport is
+   * returned unchanged. When the scale changes, the learned viewport is
    * dropped, since it's in the old scale.
    */
   private inDp(raw: RawSnapshot): RawSnapshot {
@@ -1739,8 +1740,8 @@ export class AgentDeviceSurface {
    */
   async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
-    // A test can name a point before anything captured the screen. On
-    // Android the density comes from a capture, so one is taken first.
+    // A test can name a point before the screen is captured. On Android,
+    // the density comes from a capture, so one is taken first.
     if (this.pixelScale === undefined && this.options.platform === 'android') await this.capture(operation.signal, true, input);
     const at = this.toDevicePoint(point);
     const sent = action.kind === 'swipeTo' ? { ...action, target: this.toDevicePoint(action.target) } : action;

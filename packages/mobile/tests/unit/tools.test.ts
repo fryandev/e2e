@@ -73,7 +73,7 @@ describe('agent tool pack', () => {
     expect(iosFake.lastArgs('apps.open')).toEqual({ app: 'Reminders', platform: 'ios' });
   });
 
-  it('swipes in the physical pixels of the density the latest Android capture reported', async () => {
+  it('swipes in physical pixels at the density reported by the latest Android capture', async () => {
     const fake = createFakeClient({ 'capture.snapshot': () => ({ ...ANDROID_ID_SNAPSHOT, androidSnapshot: { backend: 'android-helper', pixelDensity: 2 } }) });
     const android = buildEngine(new AgentDeviceSurface({ platform: 'android' }, () => fake.client));
     await android.init!({

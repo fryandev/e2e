@@ -9,7 +9,7 @@ import { AgentDeviceSurface } from '../../src/surface.ts';
 import type { Rect } from '../../src/support.ts';
 import { createFakeClient } from '../helpers/fake-client.ts';
 
-// The runner is internal to e2e; the test drives the built one, as tool-pixels.test.ts does.
+// The runner is internal to e2e, so the test drives the built one, like tool-pixels.test.ts does.
 const builtRunnerModule = new URL('../../../e2e/dist/run/runner.js', import.meta.url).href;
 const { run } = (await import(builtRunnerModule)) as {
   run: (options: object) => Promise<{ status: string }>;
@@ -17,7 +17,7 @@ const { run } = (await import(builtRunnerModule)) as {
 
 const CAPTURE = path.join(import.meta.dirname, '../fixtures/snapshots/android/gestures.json');
 
-/** The density of the emulator the fixture was captured on: 1080 by 2400 pixels at 420 dpi. */
+/** Density of the emulator the fixture was captured on (1080 by 2400 pixels at 420 dpi). */
 const CAPTURED_DENSITY = 2.625;
 
 const captured: Pick<CaptureSnapshotResult, 'nodes'> = JSON.parse(readFileSync(CAPTURE, 'utf8'));
@@ -27,7 +27,7 @@ function px(value: number, density: number): number {
   return Math.round((value / CAPTURED_DENSITY) * density);
 }
 
-/** Returns the captured screen as a device of `density` reports it: the same dp layout, in whole physical pixels. */
+/** Returns the captured screen as reported by a device at `density`, with the same dp layout in whole physical pixels. */
 function atDensity(density: number): Pick<CaptureSnapshotResult, 'nodes'> {
   return {
     nodes: captured.nodes.map((node) => {
@@ -42,7 +42,7 @@ function contains(rect: Rect, point: { x: number; y: number }): boolean {
   return point.x >= rect.x && point.x < rect.x + rect.width && point.y >= rect.y && point.y < rect.y + rect.height;
 }
 
-it.each([1, 2.625, 3.5])('lands a swipe built from boundingBox() and percentages on the same place at density %d', async (density) => {
+it.each([1, 2.625, 3.5])('lands a swipe built from boundingBox() and percentages in the same place at density %d', async (density) => {
   const root = fileURLToPath(new URL('../../../e2e/tests/tmp-projects/', import.meta.url));
   mkdirSync(root, { recursive: true });
   const project = mkdtempSync(path.join(root, 'density-'));
@@ -67,7 +67,7 @@ it.each([1, 2.625, 3.5])('lands a swipe built from boundingBox() and percentages
 
     const target = device.nodes.find((node) => node.identifier === 'long-press-target')?.rect;
     const capturedTarget = captured.nodes.find((node) => node.identifier === 'long-press-target')?.rect;
-    if (target === undefined || capturedTarget === undefined) throw new Error('the capture has no long-press-target bounds');
+    if (target === undefined || capturedTarget === undefined) throw new Error('the capture doesn\'t have long-press-target bounds');
     const { box, viewport }: { box: Rect; viewport: { width: number; height: number } } = JSON.parse(readFileSync(boxFile, 'utf8'));
     expect(viewport).toEqual({ width: 411, height: 914 });
     for (const side of ['x', 'y', 'width', 'height'] as const) {

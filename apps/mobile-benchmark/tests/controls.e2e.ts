@@ -338,8 +338,8 @@ test.describe('control inventory', () => {
     const pad = screen.getByLabel('Tap pad');
     const box = await pad.boundingBox();
     if (box === null) throw new Error('pad has no box');
-    // Android lays the pad out in whole physical pixels (630 by 263 at
-    // density 2.625), so its dp size is within half a dp of 240 by 100.
+    // On Android, the pad is laid out in whole physical pixels (630 by 263
+    // at density 2.625), so its dp size is within half a dp of 240 by 100.
     expect(box.width).toBeCloseTo(240, 0);
     expect(box.height).toBeCloseTo(100, 0);
 
