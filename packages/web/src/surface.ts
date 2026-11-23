@@ -1540,21 +1540,31 @@ function inFrame(node: SemanticNode, frame: Rect | null | undefined): SemanticNo
 /**
  * The in-page half of `viewportIntersection`: one `IntersectionObserver`
  * callback, which reports the element's first intersection right after it
- * is observed. The empty animation frame makes Firefox deliver it.
+ * is observed. The empty animation frame makes Firefox deliver it. The
+ * callback's own entry decides: an element the page replaced before it
+ * fired is stale, and its box and ratio come from that one frame, since a
+ * zero-area target that intersects reports a ratio of 1.
  */
 function measureViewportIntersection(element: Element): Promise<ViewportIntersection | 'detached' | 'unsupported'> {
   if (!element.isConnected) return Promise.resolve('detached');
-  const box = element.getBoundingClientRect();
-  if (element.getClientRects().length === 0 || box.width <= 0 || box.height <= 0) {
-    return Promise.resolve({ intersects: false, ratio: 0 });
-  }
+  if (element.getClientRects().length === 0) return Promise.resolve({ intersects: false, ratio: 0 });
   const view = element.ownerDocument.defaultView;
   if (view === null || typeof view.IntersectionObserver !== 'function') return Promise.resolve('unsupported');
   return new Promise((resolve) => {
     const observer = new view.IntersectionObserver((entries) => {
       observer.disconnect();
+      if (!element.isConnected) {
+        resolve('detached');
+        return;
+      }
+      const entry = entries.at(-1);
+      const box = entry?.boundingClientRect;
+      if (entry === undefined || box === undefined || box.width <= 0 || box.height <= 0) {
+        resolve({ intersects: false, ratio: 0 });
+        return;
+      }
       // Clamped: a browser can round a fully visible box a hair past 1.
-      const ratio = Math.min(1, Math.max(0, entries.at(-1)?.intersectionRatio ?? 0));
+      const ratio = Math.min(1, Math.max(0, entry.intersectionRatio));
       resolve({ intersects: ratio > 0, ratio });
     });
     observer.observe(element);

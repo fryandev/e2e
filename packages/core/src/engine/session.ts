@@ -509,15 +509,17 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
 
 /**
  * An engine's `viewportIntersection` answer, held to the contract: a matcher
- * must never pass on a ratio outside 0 to 1 or a missing verdict.
+ * must never pass on a ratio outside 0 to 1, a missing verdict, or a ratio
+ * that contradicts the verdict (`{ intersects: false, ratio: 1 }`).
  */
 function checkIntersection(value: ViewportIntersection, engineName: string): ViewportIntersection {
   const { intersects, ratio } = (value ?? {}) as Partial<Record<keyof ViewportIntersection, unknown>>;
-  const validRatio = ratio === undefined || (typeof ratio === 'number' && ratio >= 0 && ratio <= 1);
+  const validRatio =
+    ratio === undefined || (typeof ratio === 'number' && ratio >= 0 && ratio <= 1 && ratio > 0 === intersects);
   if (typeof intersects !== 'boolean' || !validRatio) {
     throw new EngineError(
       'ENGINE_FAILURE',
-      `engine ${engineName} returned an invalid viewport intersection: intersects must be a boolean and ratio a number from 0 to 1`,
+      `engine ${engineName} returned an invalid viewport intersection: intersects must be a boolean, and ratio a number from 0 to 1 that is above 0 exactly when intersects is true`,
       { retryable: false },
     );
   }

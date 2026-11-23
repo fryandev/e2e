@@ -117,9 +117,18 @@ describe('toBeInViewport', () => {
     expect(String((error as Error).message)).not.toContain('hunter2');
   });
 
-  it('fails on an engine answer outside the contract', async () => {
-    const locator = screenMeasuring(() => ({ intersects: true, ratio: 2 })).getByTestId('target');
-    expect(await failure(expectFixture(locator).toBeInViewport())).toMatchObject({ code: 'ENGINE_FAILURE' });
+  it('fails on an engine answer outside the contract or one that contradicts itself', async () => {
+    for (const answer of [{ intersects: true, ratio: 2 }, { intersects: false, ratio: 1 }, { intersects: true, ratio: 0 }]) {
+      const locator = screenMeasuring(() => answer).getByTestId('target');
+      expect(await failure(expectFixture(locator).not.toBeInViewport({ ratio: 1 }))).toMatchObject({ code: 'ENGINE_FAILURE' });
+    }
+  });
+
+  it('prints a share that falls short of ratio in full when rounding would show it as met', async () => {
+    const locator = screenMeasuring(() => ({ intersects: true, ratio: 0.99975 })).getByTestId('target');
+    expect(await failure(expectFixture(locator).toBeInViewport({ ratio: 1, timeout: 50 }))).toMatchObject({
+      message: expect.stringContaining('observed: 0.99975 of its box inside the viewport'),
+    });
   });
 
   it('rejects an invalid ratio and unknown options before reading', () => {

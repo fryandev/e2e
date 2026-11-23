@@ -38,11 +38,13 @@ interface Sample {
   readonly node: SemanticNode | null;
   /** Every current match, read; only a `wholeSet: 'read'` matcher asks for them. */
   readonly nodes: readonly SemanticNode[];
+  /** How much of `node` is inside the viewport, for a `measuresViewport` matcher. */
+  readonly intersection?: ViewportIntersection;
   /**
-   * How much of `node` is inside the viewport, for a `measuresViewport`
-   * matcher; null when the node went stale before it was measured.
+   * The ref went stale before it was read or measured. Such a sample is never
+   * evaluated, negated or not: a node a race superseded is not a gone one.
    */
-  readonly intersection?: ViewportIntersection | null;
+  readonly stale?: boolean;
 }
 
 interface MatcherSpec {
@@ -65,7 +67,7 @@ interface MatcherSpec {
    * rejects keeps the poll waiting, negated or not: `not.toHaveValue` on a
    * heading is not a pass.
    */
-  readonly evaluableNode?: (node: SemanticNode, sample: Sample) => boolean;
+  readonly evaluableNode?: (node: SemanticNode) => boolean;
   /**
    * The matcher reads what an engine withholds on a secure field, its value,
    * text, or attributes; a name is never withheld. A secure node in the sample
@@ -239,16 +241,17 @@ class AsyncExpectationImpl implements AsyncExpectation {
    * visibility matchers also accept zero matches.
    */
   private conditionEvaluable(spec: MatcherSpec, sample: Sample): boolean {
+    if (sample.stale === true) return false;
     if (spec.wholeSet !== undefined) return true;
     if (sample.node === null) return spec.evaluableWithoutNode === true;
-    return spec.evaluableNode?.(sample.node, sample) ?? true;
+    return spec.evaluableNode?.(sample.node) ?? true;
   }
 
   private async sample(spec: MatcherSpec, reads: ReadWindow): Promise<Sample> {
     const { engine } = this.internals.context;
     if (spec.measuresViewport === true) {
-      const { node, count, intersection } = await engine.readViewport(this.internals.expression, reads);
-      return { count, node, nodes: [], intersection };
+      const { node, count, stale, intersection } = await engine.readViewport(this.internals.expression, reads);
+      return { count, node, nodes: [], stale, ...(intersection === undefined ? {} : { intersection }) };
     }
     if (spec.wholeSet === 'read') {
       const nodes = await engine.readAllNow(this.internals.expression, reads);
@@ -393,9 +396,8 @@ class AsyncExpectationImpl implements AsyncExpectation {
         measuresViewport: true,
         // No match is outside the viewport: a device leaves offscreen nodes out of its tree.
         evaluableWithoutNode: true,
-        evaluableNode: (_node, sample) => sample.intersection != null,
         predicate: ({ node, intersection }) => {
-          if (node === null || intersection == null || !intersection.intersects) return false;
+          if (node === null || intersection === undefined || !intersection.intersects) return false;
           if (minimum === undefined) return true;
           if (intersection.ratio === undefined) {
             throw new ConfigurationError(
@@ -407,13 +409,13 @@ class AsyncExpectationImpl implements AsyncExpectation {
         },
         describeExpected:
           minimum === undefined ? 'inside the viewport' : `at least ${minimum} of its box inside the viewport`,
-        observed: ({ node, intersection }) => {
-          if (node === null) return 'no node';
-          if (intersection == null) return 'a node that went stale before it was measured';
+        observed: ({ node, stale, intersection }) => {
+          if (stale === true) return 'a node that went stale before it was measured';
+          if (node === null || intersection === undefined) return 'no node';
           if (!intersection.intersects) return 'outside the viewport';
           return intersection.ratio === undefined
             ? 'inside the viewport'
-            : `${Number(intersection.ratio.toFixed(3))} of its box inside the viewport`;
+            : `${describeRatio(intersection.ratio, minimum)} of its box inside the viewport`;
         },
       },
       options?.timeout,
@@ -574,6 +576,18 @@ class AsyncExpectationImpl implements AsyncExpectation {
       options?.timeout,
     );
   }
+}
+
+/**
+ * A measured share as a failure message prints it: three decimals, unless
+ * rounding would put it on the other side of `minimum` than the comparison
+ * did (0.99975 against 1 would print as 1), then in full.
+ */
+function describeRatio(ratio: number, minimum: number | undefined): string {
+  const rounded = Number(ratio.toFixed(3));
+  if (minimum === undefined) return String(rounded);
+  const met = ratio > minimum - RATIO_TOLERANCE;
+  return rounded >= minimum === met ? String(rounded) : String(ratio);
 }
 
 /** A list of text matches, as opposed to one string or RegExp. */

@@ -13,5 +13,4 @@ scrolling and `overflow` ancestors and frames clip the box. The mobile engine
 reports only whether the node is on screen, because a device reports bounds
 already clipped, so `ratio > 0` there fails with `UNSUPPORTED_CAPABILITY`.
 Engines implement the optional `viewportIntersection` method for the new
-`viewport-intersection` capability. `@e2e-dev/web` and `@e2e-dev/mobile` now
-need `@e2e-dev/core` 0.24.1 or later.
+`viewport-intersection` capability.

@@ -1790,6 +1790,23 @@ describe('location', () => {
     await expect(measure('Unplaced')).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
   });
 
+  it('measures against a resized screen once the device confirms it, without waiting for an observe', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const below = { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Below', rect: { x: 10, y: 850, width: 100, height: 20 } };
+    const locateBelow = async () => {
+      const [node] = await h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Below', exact: true } } }, operation());
+      return h.engine.viewportIntersection!(node!.ref, operation());
+    };
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, below] }));
+    expect(await locateBelow()).toEqual({ intersects: false });
+
+    // A foldable unfolds: the tree grows to 402x874, and the device's screen agrees.
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, below], viewport: { width: 402, height: 874 } }));
+    h.fake.respond('capture.screenshot', () => ({ logicalWidth: 402, logicalHeight: 874 }));
+    expect(await locateBelow()).toEqual({ intersects: true });
+  });
+
   it('refuses to say whether a node is in the viewport when its window has no known place on the screen', async () => {
     const h = harness();
     h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, warnings: [ORIGIN_WARNING] }));

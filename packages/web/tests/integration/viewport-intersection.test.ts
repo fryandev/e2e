@@ -97,4 +97,26 @@ describe('viewport intersection on the web engine', () => {
     await page.locator('#below').evaluate((element) => element.remove());
     await expect(engine.viewportIntersection!(below, operation)).rejects.toMatchObject({ code: 'NODE_STALE' });
   });
+
+  it('reads an element the page replaces every frame as stale, never as outside', async () => {
+    await page.evaluate(() => {
+      const make = () => {
+        const ticker = document.createElement('button');
+        ticker.id = 'ticker';
+        ticker.textContent = 'Ticker';
+        ticker.style.cssText = 'position: fixed; left: 10px; top: 600px';
+        return ticker;
+      };
+      document.body.append(make());
+      const swap = () => {
+        document.getElementById('ticker')?.replaceWith(make());
+        requestAnimationFrame(swap);
+      };
+      requestAnimationFrame(swap);
+    });
+    for (let round = 0; round < 5; round += 1) {
+      const ticker = await locate('#ticker');
+      await expect(engine.viewportIntersection!(ticker, operation)).rejects.toMatchObject({ code: 'NODE_STALE' });
+    }
+  });
 });

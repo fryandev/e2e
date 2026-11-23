@@ -225,6 +225,8 @@ interface NodeBinding {
   readonly keyboardVisible: boolean;
   /** Whether the capture `node.rect` came from could not place its window on the screen. */
   readonly originUnknown: boolean;
+  /** The size that capture read off its own tree, which `viewportFor` checks against the screen. */
+  readonly captureViewport: ViewportSize | undefined;
   /** Whether `fill` and `clear` may type into the node, judged with the children `node` leaves out. */
   readonly takesText: boolean;
 }
@@ -1220,8 +1222,7 @@ export class AgentDeviceSurface {
    * measures every rect and point against the viewport, so an invented one
    * would misplace every tap.
    */
-  private async viewportFor(projected: ProjectedSnapshot, signal: AbortSignal, budget: InputBudget): Promise<ViewportSize> {
-    const read = projected.viewport;
+  private async viewportFor(read: ViewportSize | undefined, signal: AbortSignal, budget: InputBudget): Promise<ViewportSize> {
     const known = this.knownViewport;
     if (known !== undefined) {
       if (read === undefined) return known;
@@ -1254,7 +1255,7 @@ export class AgentDeviceSurface {
   async viewport(operation: OperationContext, budget: InputBudget): Promise<ViewportSize> {
     const raw = await this.snapshotOrEmpty(operation, this.interactiveSnapshots, budget);
     const projected = this.project(raw);
-    const { width, height } = await this.viewportFor(projected, operation.signal, budget);
+    const { width, height } = await this.viewportFor(projected.viewport, operation.signal, budget);
     return { width, height };
   }
 
@@ -1262,7 +1263,7 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, this.interactiveSnapshots, budget);
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected)]));
-    const viewport = await this.viewportFor(projected, operation.signal, budget);
+    const viewport = await this.viewportFor(projected.viewport, operation.signal, budget);
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport, { normalizeStatusBar: options.comparable === true }, budget) : undefined;
     const keyboardVisible = measuredKeyboard(raw);
@@ -1317,25 +1318,27 @@ export class AgentDeviceSurface {
    * that located it. agent-device clips each rect to the window and to its
    * scrolling ancestors, and leaves out a node with nothing on screen, so a
    * rect is only the visible part of a box: the share of the whole is
-   * unknown, and the answer carries no `ratio`. The screen is the one the
-   * session confirmed, not a capture's own size, which an app drawn smaller
-   * than the screen shrinks. A rect whose window could not be placed on the
-   * screen is refused rather than guessed at.
+   * unknown, and the answer carries no `ratio`. The screen is the one
+   * `viewportFor` confirms, as `observe` does: a capture whose size is not
+   * the known screen's asks the device, since an app drawn smaller than the
+   * screen shrinks it and a resized screen (a foldable, Split View) grows it.
+   * A rect whose window could not be placed on the screen is refused rather
+   * than guessed at.
    */
-  async viewportIntersection(ref: NodeRef): Promise<ViewportIntersection> {
+  async viewportIntersection(ref: NodeRef, operation: OperationContext, budget: InputBudget): Promise<ViewportIntersection> {
     const entry = this.resolveRef(ref);
     const rect = entry.node.rect;
-    const screen = this.knownViewport;
     if (entry.originUnknown) {
       throw new EngineError('UNSUPPORTED_CAPABILITY', `whether node ${ref.id} is in the viewport is unknown: the ${ORIGIN_UNKNOWN_BOUNDS}`, {
         retryable: false,
       });
     }
-    if (rect === undefined || screen === undefined) {
-      throw new EngineError('UNSUPPORTED_CAPABILITY', `node ${ref.id} has no bounds on a screen of known size, so whether it is in the viewport is unknown`, {
+    if (rect === undefined) {
+      throw new EngineError('UNSUPPORTED_CAPABILITY', `node ${ref.id} has no bounds on the screen, so whether it is in the viewport is unknown`, {
         retryable: false,
       });
     }
+    const screen = await this.viewportFor(entry.captureViewport, operation.signal, budget);
     const width = Math.min(rect.x + rect.width, screen.width) - Math.max(rect.x, 0);
     const height = Math.min(rect.y + rect.height, screen.height) - Math.max(rect.y, 0);
     return { intersects: width > 0 && height > 0 };
@@ -1389,6 +1392,7 @@ export class AgentDeviceSurface {
       controlRef: control.ref,
       keyboardVisible: snapshot.keyboardVisible,
       originUnknown: snapshot.originUnknown,
+      captureViewport: snapshot.viewport,
       takesText: mayTakeText(entry.node),
       refsGeneration: snapshot.refsGeneration,
     };
@@ -1846,7 +1850,7 @@ export class AgentDeviceSurface {
     for (const axis of ['horizontal', 'vertical'] as const) {
       const { raw } = reading;
       const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
-      const viewport = await this.viewportFor(projected, signal, input);
+      const viewport = await this.viewportFor(projected.viewport, signal, input);
       const top = keyboardTop(raw, viewport);
       if (top === undefined) {
         throw new EngineError(
