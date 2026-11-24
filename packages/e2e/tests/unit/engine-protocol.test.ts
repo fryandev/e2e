@@ -784,6 +784,21 @@ describe('engine protocol against a server written from the messages alone', () 
     await expect(pending).rejects.toMatchObject({ code: -32603, message: expect.stringContaining('malformed error') });
   });
 
+  it('reads a message that arrives a byte at a time, and two that arrive in one chunk', async () => {
+    const input = new PassThrough();
+    const seen: unknown[] = [];
+    const connection = new Connection({ input, output: new PassThrough() }, { notifications: { note: (params) => void seen.push(params) } });
+    const frame = (params: unknown): Buffer => {
+      const body = JSON.stringify({ jsonrpc: '2.0', method: 'note', params });
+      return Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+    };
+    for (const byte of frame('één')) input.write(Buffer.from([byte]));
+    input.write(Buffer.concat([frame(2), frame(3)]));
+    input.write(frame(4));
+    await vi.waitFor(() => expect(seen).toEqual(['één', 2, 3, 4]));
+    expect(connection.closed).toBeUndefined();
+  });
+
   it('reports a malformed notification instead of crashing', async () => {
     const toClient = new PassThrough();
     const logs: string[] = [];

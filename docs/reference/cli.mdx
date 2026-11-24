@@ -113,7 +113,7 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | --- | --- |
 | `[directory]` | Where to scaffold; created when missing. Default: the working directory. |
 | `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no CI pipeline, no install. |
-| `--example <name>` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. See [Starting from an example](#starting-from-an-example). |
+| `--example [name]` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. Without a name, lists them to pick from. See [Starting from an example](#starting-from-an-example). |
 | `--engine <ids>` | The engines for a new config: `web`, `mobile`, or `none`. Comma-separated or repeated; `web,mobile` writes a target for each. Default: asked. |
 | `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
 | `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
@@ -132,6 +132,7 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | 2 | An unknown flag value. Exits before any write and lists the valid values. |
 | 2 | An invalid `package.json`. Exits before any write. |
 | 2 | No terminal on stdin and stdout, and no `--yes`. The message names the flag. |
+| 2 | `--example` without a name, with `--yes` or without a terminal. The message lists the names. |
 | 2 | `--example` with a directory that has files in it, or the example download failed. Nothing stays behind. |
 | 2 | The dependency installation failed. |
 | 130 | Ctrl-C or SIGTERM while the logo is drawn or the example downloads, or SIGINT during the dependency installation. A partial example is removed. |
@@ -301,7 +302,7 @@ bunx e2e init --yes --ci gitlab
 [example apps](https://github.com/e2e-inc/e2e/tree/main/examples) into a
 new or empty directory, then runs the wizard in its e2e project. That is
 the directory itself for a web or Expo app, and its `e2e/` folder for a
-native app.
+native app. Without a name, it lists the examples to pick from.
 
 <CodeGroup>
 ```bash npm
@@ -685,13 +686,13 @@ Test files, directories, or globs relative to the project root:
 | `--strict-cache` | Turns on `cache.strict` for this run. A step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent. Retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `-u`, `--update-snapshots` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it, a missing one is written and fails; in CI it is only attached to the results. |
 | `-w`, `--watch` | Runs, then reruns when a test file or the config changes, or on a key. See [Watch mode](#watch-mode). |
-| `--step` | Runs the first step, then holds each later step until a key at its prompt: Enter runs it, `s` shows the screen, `l` the app log, `n` runs the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops with exit 130. Held time counts toward no timeout. Without a terminal, the run goes on in the background and each command returns at the next held step with its screen: `--step next` runs it, `--step rest` runs the rest, `--step stop` ends the run. `--step next`, `rest`, and `stop` also resume or stop a test at a [`screen.pause()`](/debugging#pause-a-test). Runs one worker; refused in CI, with `--watch`, `--workers` above 1, and the json reporter (exit 2). See [Step through a test](/debugging#step-through-a-test) and [without a terminal](/debugging#step-through-a-test-without-a-terminal). |
+| `--step` | Runs the first step, then holds each later step until a key at its prompt: Enter runs it, `s` shows the screen, `l` the app log, `n` runs the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops with exit 130. Held time counts toward no timeout. Without a terminal, the run goes on in the background and each command returns at the next held step with its screen: `--step next` runs it, `--step rest` runs the rest, `--step stop` ends the run. `--step next`, `rest`, and `stop` also resume or stop a test at a [`screen.pause()`](/debugging#pause-a-test). Runs one worker; refused in CI, with `--watch`, and `--workers` above 1 (exit 2); with the json reporter it needs a terminal. See [Step through a test](/debugging#step-through-a-test) and [without a terminal](/debugging#step-through-a-test-without-a-terminal). |
 
 **Output**
 
 | Option | Description |
 | --- | --- |
-| `--reporter <ids>` | Replaces the built-in reporters in `config.reporters`, comma-separated: `list`, `dot`, `json`, `junit`, `markdown`. Default: the config. A built-in the config configured, such as `junit({ outputFile })`, keeps its options. Beside `json`, `list` and `dot` print to stderr. `dot` with `list` is `INVALID_CONFIG`. [Other reporters](/reference/reporters) in the config keep running. |
+| `--reporter <ids>` | Replaces the built-in reporters in `config.reporters`, comma-separated: `list`, `dot`, `line`, `json`, `junit`, `markdown`. Default: the config. A built-in the config configured, such as `junit({ outputFile })`, keeps its options. Beside `json`, `list`, `dot`, and `line` print to stderr. Two of `list`, `dot`, and `line` together are `INVALID_CONFIG`. [Other reporters](/reference/reporters) in the config keep running. |
 | `--output <dir>` | The results directory for this run, over the config's [`output`](/reference/config#output): the report, the reporter files, the AI trace, `results/`, and `sessions/`. Default: the config, else `.e2e`. Resolved from the project root, and must be a directory inside it, not the root itself; that and the other directories the run cannot own (listed there) are `INVALID_CONFIG`. `results/` is cleared once the tests start; a `--last-failed` rerun keeps what the previous report names. |
 | `--cache-dir <dir>` | The replay cache directory for this run, over [`E2E_CACHE_DIR`](/reference/environment#replay-cache) and [`cache.dir`](/reference/config#cache). Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache`. Resolved from the project root; `~` or a leading `~/` is the home directory. The cache mode stays as configured. With a custom `cache.store` it is `INVALID_CONFIG`. |
 | `--timings <file>` | The [timings history](/ci#cache-the-timings-history) to update when the run ends, over `<output>/timings.json`. With more than one worker, files with no recorded time start first, then the rest longest first. Resolved from the project root. A missing or invalid file is no history, never an error. |
@@ -794,6 +795,7 @@ cache, `-` when it reports no split. The report records the same per step
 | --- | --- |
 | `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress shows the current agent step, model turns, tool calls, and reasoning excerpts; when stdout is not a terminal (piped, redirected, most CI), each test prints as it finishes. The output ends with each failed test's file and line, first error line, and trace page when one was written. Untrusted fields are capped at 8 KiB and stripped of control characters. |
 | `dot` | One mark per selected test result, followed by failure details and a run summary. See [`dot`](/reference/reporters#dot) for marks, colors, and wrapping. With `dot,json`, all terminal output goes to stderr. |
+| `line` | One row of progress, replaced in place on a TTY and printed per finished test elsewhere. A failure prints when it happens, and the run summary follows. See [`line`](/reference/reporters#line). With `line,json`, all terminal output goes to stderr. |
 | `json` | The report document to stdout, and nothing else there, so `e2e run --reporter json \| jq` works. It is the `<output>/report.json` document, described by `schema/report-v1.schema.json` in the package. The shape changes only with the `schemaVersion` field (`report-1` today). |
 | `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. A test a [test filter](/filters) left out is a `<skipped>` whose message starts `left out by filter <name>:`; other tests the run did not select are not listed. Run-level errors form a `run` suite. |
 | `markdown` | `summary.md` beside the report: counts, cost, errors, and failure details, each naming its trace page when one was kept. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
@@ -813,10 +815,10 @@ an interrupt. Its errors are on the terminal and in the exit code. A
 `junit.xml` or `summary.md` that could not be written is a line on stderr,
 never a run error.
 
-The `list` and `dot` reporters print run errors under `Run Errors`. Without
-either, or another reporter that prints to the terminal with
-[`onOutput`](/reference/reporters#onoutput),
-each run error prints on stderr as `CODE: message`, with `json` too.
+The `list`, `dot`, and `line` reporters print run errors under `Run Errors`.
+Without one of them, or another [interactive](/reference/reporters#interactive)
+reporter, each run error prints on stderr as `CODE: message`, with `json`
+too.
 
 `run.summary` in the report counts the results:
 

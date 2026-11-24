@@ -987,6 +987,15 @@ export interface TestAPI<Fixtures = TestFixtures, Worker = WorkerFixtures> exten
   fail(condition: boolean, reason?: string): void;
   fail(reason?: string): void;
   /**
+   * Triples the running test's timeout in force when `condition` is true (or
+   * always), as Playwright's `test.slow()` does: once per attempt, so a
+   * second call does nothing. In a `beforeAll` hook it triples that hook's
+   * timeout. Otherwise it follows `setTimeout`'s rules; `reason` is not
+   * reported.
+   */
+  slow(condition: boolean, reason?: string): void;
+  slow(reason?: string): void;
+  /**
    * Inside a running test or a `beforeEach` hook: gives the test a timeout
    * of `timeout` ms, counted from the start of the attempt like the
    * `timeout` option, which it replaces for this attempt. A timeout shorter

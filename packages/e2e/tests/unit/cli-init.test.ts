@@ -1567,6 +1567,21 @@ export default {
       expect(output()).not.toContain('No web, iOS, or Android target');
     });
 
+    it('names a key the existing config loaded by its marker when it does not load', async () => {
+      const key = `gsk-init-${'7c2e9a4f'.repeat(4)}`;
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*' } }));
+      writeFileSync(path.join(dir, '.env.init'), `GROQ_API_KEY=${key}\n`);
+      writeFileSync(path.join(dir, 'e2e.config.ts'), `process.loadEnvFile(${JSON.stringify(path.join(dir, '.env.init'))});\nthrow new Error('config failed with ' + process.env.GROQ_API_KEY);\n`);
+      vi.stubEnv('GROQ_API_KEY', undefined);
+      try {
+        await init(dir, { yes: true, ci: 'github-actions' });
+        expect(output()).toContain('config failed with <secret:GROQ_API_KEY>');
+        expect(output()).not.toContain(key.slice(-16));
+      } finally {
+        delete process.env['GROQ_API_KEY'];
+      }
+    });
+
     it('writes no pipeline when an existing mobile config does not load', async () => {
       writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/mobile': '*' } }));
       writeFileSync(path.join(dir, 'e2e.config.ts'), "import { mobile } from 'not-installed-engine';\nexport default { targets: [{ engine: mobile() }] };\n");

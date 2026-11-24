@@ -679,9 +679,10 @@ export interface EngineSnapshot {
    * Regions masked in the screenshot; the harness checks it covers every secure
    * node. An engine asked for pixels (`pixels: true`) that cannot mask every
    * secure node on screen omits `pixels` and still reports the regions it
-   * could mask, fewer than the secure nodes, so `toHaveScreenshot` fails with
-   * `POLICY_DENIED` and the agent reads `MASKING_UNPROVEN`, not a missing
-   * screenshot.
+   * could mask. A count with no `pixels` always reads as withheld, even when
+   * the tree holds no secure node, since a tree read only in part can leave
+   * one out: `toHaveScreenshot` fails with `POLICY_DENIED` and the agent reads
+   * `MASKING_UNPROVEN`, not a missing screenshot.
    */
   readonly maskedRegionCount?: number;
 }
@@ -835,7 +836,7 @@ export interface Engine {
    * machine here (a first-run browser download, a toolchain fetch), so it
    * happens once instead of per worker and its progress reaches the reporter
    * through `info.log`. It runs after collection and before the run's clock
-   * starts: `plan` is emitted, the report's `startedAt` taken, and the app
+   * starts: `collected` is emitted, the report's `startedAt` taken, and the app
    * started only once every target is prepared, so a download is never part
    * of a run's duration. A run with nothing to run (the test filters left
    * nothing, or `--pass-with-no-tests` on an empty selection) prepares no

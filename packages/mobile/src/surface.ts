@@ -681,7 +681,7 @@ export class AgentDeviceSurface {
     this.app = info.app;
     const binding = this.pool.binding(info, info.workerSlot, info.env);
     this.device = binding;
-    const session = this.pool.session(info, info.workerSlot);
+    const session = this.pool.slotSession(info, info.workerSlot, binding);
     const label = deviceLabel(binding);
     this.where = `session ${session}${label === undefined ? '' : ` on ${label}`}`;
     this.client ??= this.createClient(session, binding);

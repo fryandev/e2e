@@ -1044,8 +1044,9 @@ Return the surface as it is right now. The runner mints the revision and
 stamps it onto every ref. When `pixels` are present, it checks that
 `maskedRegionCount` covers every `secure` node. An engine asked for pixels
 (`pixels: true`) that cannot mask every secure node on screen omits `pixels`
-and reports `maskedRegionCount` alone, the regions it could mask, fewer than
-the secure nodes. `toHaveScreenshot` then fails with
+and reports `maskedRegionCount` alone, the regions it could mask. A count with
+no `pixels` always reads as withheld, even when the tree holds no `secure`
+node, since a tree read only in part can leave one out. `toHaveScreenshot` then fails with
 `POLICY_DENIED`, and the agent reads `MASKING_UNPROVEN`, instead of waiting for
 a screenshot.
 A valid empty tree may have a childless root and include `pixels`.
@@ -1105,9 +1106,10 @@ export interface EngineSnapshot {
    * Regions masked in the screenshot; the harness checks it covers every secure
    * node. An engine asked for pixels (`pixels: true`) that cannot mask every
    * secure node on screen omits `pixels` and still reports the regions it
-   * could mask, fewer than the secure nodes, so `toHaveScreenshot` fails with
-   * `POLICY_DENIED` and the agent reads `MASKING_UNPROVEN`, not a missing
-   * screenshot.
+   * could mask. A count with no `pixels` always reads as withheld, even when
+   * the tree holds no secure node, since a tree read only in part can leave
+   * one out: `toHaveScreenshot` fails with `POLICY_DENIED` and the agent reads
+   * `MASKING_UNPROVEN`, not a missing screenshot.
    */
   readonly maskedRegionCount?: number;
 }

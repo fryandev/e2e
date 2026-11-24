@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { redactError } from '@e2e-dev/core/lib/run/secrecy';
 import {
   detectPackageManager,
   detectWorkspacePackageManager,
@@ -53,7 +54,16 @@ import { MCP_LOCATIONS, type CiChoice } from './init/choices.ts';
 import { loadConfigModule } from '../config/load.ts';
 import { getEnginePreset, getEnginePresets, DEFAULT_ENGINE_IDS, type EngineId } from './init/engines.ts';
 import { detectFramework, productionScripts, type FrameworkApp, type FrameworkManifest } from './init/frameworks.ts';
-import { copyExample, ExampleCopyCancelled, ExampleDownloadError, findExample, isEmptyDirectory, type ExampleCopy } from './init/examples.ts';
+import {
+  copyExample,
+  ExampleCopyCancelled,
+  ExampleDownloadError,
+  EXAMPLES,
+  findExample,
+  isEmptyDirectory,
+  type ExampleCopy,
+  type ExamplePreset,
+} from './init/examples.ts';
 import { DEFAULT_ENDPOINT, GATEWAYS, getGatewayPreset, validateEndpoint, type GatewayId } from './init/gateways.ts';
 import { isCiMode } from '@e2e-dev/core/lib/config/resolve';
 import { isLoopbackHost } from '@e2e-dev/core/lib/internal/urls';
@@ -80,8 +90,9 @@ export interface InitOptions {
   /**
    * An `examples/` folder name to copy into the directory first; the wizard
    * then runs in the example's e2e project with its config and tests as they are.
+   * `true` asks which one; the CLI refuses that next to `--yes`.
    */
-  example?: string;
+  example?: string | true;
   /**
    * The answers given as flags; each one skips its prompt, and an omitted one
    * takes the `--yes` default or asks. `engines` is empty for a config with no engine.
@@ -175,7 +186,9 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
 
   if (options.interactive === false && !options.yes) {
     clack.log.error(
-      'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (the web engine, the Vercel AI Gateway, no installation) or --yes with flags such as --engine for other answers',
+      options.example === true
+        ? `e2e init --example without a name asks which example and needs an interactive terminal; run it from a terminal, or name one with --yes: ${EXAMPLES.map(({ id }) => id).join(', ')}`
+        : 'e2e init asks questions and needs an interactive terminal; run it from a terminal, or pass --yes to accept the defaults (the web engine, the Vercel AI Gateway, no installation) or --yes with flags such as --engine for other answers',
     );
     return done('not-interactive', 2);
   }
@@ -184,19 +197,31 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     return done('invalid-project', 2);
   }
 
-  const example = options.example === undefined ? undefined : findExample(options.example);
-  if (options.example !== undefined && example === undefined) {
-    clack.log.error(`Unknown example ${options.example}`);
-    return done('invalid-project', 2);
-  }
-  if (example !== undefined) {
-    facts.example = example.id;
+  let example: ExamplePreset | undefined;
+  if (options.example !== undefined) {
     if (!isEmptyDirectory(root)) {
       clack.log.error(
-        `${options.directory ?? root} is not empty; --example needs a new or empty directory, such as e2e init my-app --example ${example.id}`,
+        `${options.directory ?? root} is not empty; --example needs a new or empty directory, such as e2e init my-app --example${options.example === true ? '' : ` ${options.example}`}`,
       );
       return done('invalid-project', 2);
     }
+    if (options.example === true) {
+      const picked = await clack.select<ExamplePreset>({
+        message: 'Which example?',
+        options: EXAMPLES.map((preset) => ({ value: preset, label: preset.label, hint: preset.runsOn })),
+      });
+      if (isCancelled(picked)) return cancel();
+      example = picked;
+    } else {
+      example = findExample(options.example);
+      if (example === undefined) {
+        clack.log.error(`Unknown example ${options.example}`);
+        return done('invalid-project', 2);
+      }
+    }
+  }
+  if (example !== undefined) {
+    facts.example = example.id;
     // The spinner takes over SIGINT and SIGTERM while it spins; its cancel stops the download and removes the partial copy.
     const interrupt = new AbortController();
     const spinner = clack.spinner({ onCancel: () => interrupt.abort() });
@@ -650,7 +675,8 @@ async function readTargets(configPath: string): Promise<CiTarget[] | undefined> 
   try {
     return configTargets(await loadConfigModule(configPath));
   } catch (cause) {
-    clack.log.warn(`Could not read the targets of ${path.basename(configPath)}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    // Redacted: the config may have loaded a key and quoted it as it failed.
+    clack.log.warn(`Could not read the targets of ${path.basename(configPath)}: ${redactError(cause instanceof Error ? cause.message : String(cause))}`);
     return undefined;
   }
 }
